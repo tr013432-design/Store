@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { MOCK_PRODUCTS, MOCK_TRANSACTIONS } from './constants';
-import { Product, Transaction, CartItem } from './types';
+import { Product, Transaction, CartItem, PaymentMethod } from './types';
 import { Dashboard } from './components/Dashboard';
 import { POS } from './components/POS';
+import { VolunteerSales } from './components/VolunteerSales'; // Importe Novo
 import { Inventory } from './components/Inventory';
 import { Assistant } from './components/Assistant';
-import { LayoutDashboard, ShoppingCart, Package, MessageSquare, Menu, Church } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, MessageSquare, Menu, Church, ClipboardList } from 'lucide-react';
 
 enum View {
   DASHBOARD,
   POS,
+  VOLUNTEER_SALES, // Nova View
   INVENTORY,
   ASSISTANT
 }
@@ -17,22 +19,33 @@ enum View {
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
+  // Garante que o tipo seja compatível, usando 'as any' temporariamente se der erro de tipo nos dados antigos
+  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS as any); 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleSaleComplete = (items: CartItem[], total: number, method: 'Dinheiro' | 'Cartão' | 'Pix') => {
+  // Função Única para processar vendas (seja do Caixa Rápido ou dos Voluntários)
+  const handleSaleComplete = (
+      items: CartItem[], 
+      total: number, 
+      method: PaymentMethod,
+      volunteerData?: { name: string; service: string; date: string; time: string }
+    ) => {
+    
     const newTransaction: Transaction = {
       id: `tx-${Date.now()}`,
       date: new Date().toISOString(),
       items,
       total,
       paymentMethod: method,
+      // Se vier dados do voluntário (da aba nova), salva junto
+      volunteerName: volunteerData?.name,
+      serviceType: volunteerData?.service,
+      serviceDate: volunteerData?.date,
+      serviceTime: volunteerData?.time
     };
     
-    // Update transactions
     setTransactions(prev => [newTransaction, ...prev]);
 
-    // Update stock
     setProducts(prev => prev.map(p => {
       const soldItem = items.find(i => i.id === p.id);
       if (soldItem) {
@@ -79,8 +92,9 @@ const App: React.FC = () => {
         </div>
         
         <nav className="space-y-2 flex-1">
-          <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel" />
-          <NavItem view={View.POS} icon={ShoppingCart} label="Caixa / Venda" />
+          <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
+          <NavItem view={View.VOLUNTEER_SALES} icon={ClipboardList} label="Relatório Voluntário" />
+          <NavItem view={View.POS} icon={ShoppingCart} label="Caixa Rápido" />
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
           <NavItem view={View.ASSISTANT} icon={MessageSquare} label="Assistente IA" />
         </nav>
@@ -118,8 +132,9 @@ const App: React.FC = () => {
                 <h1 className="text-xl font-bold text-slate-800">Ecclesia Vendas</h1>
             </div>
             <nav className="space-y-2">
-              <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel" />
-              <NavItem view={View.POS} icon={ShoppingCart} label="Caixa" />
+              <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
+              <NavItem view={View.VOLUNTEER_SALES} icon={ClipboardList} label="Relatório Voluntário" />
+              <NavItem view={View.POS} icon={ShoppingCart} label="Caixa Rápido" />
               <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
               <NavItem view={View.ASSISTANT} icon={MessageSquare} label="Assistente IA" />
             </nav>
@@ -131,7 +146,11 @@ const App: React.FC = () => {
       <main className="flex-1 lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8 transition-all">
         <div className="max-w-7xl mx-auto">
           {currentView === View.DASHBOARD && <Dashboard transactions={transactions} products={products} />}
-          {currentView === View.POS && <POS products={products} onCompleteSale={handleSaleComplete} />}
+          {currentView === View.POS && <POS products={products} onCompleteSale={(items, total, method) => handleSaleComplete(items, total, method)} />}
+          
+          {/* AQUI ESTÁ A NOVA ABA SENDO RENDERIZADA */}
+          {currentView === View.VOLUNTEER_SALES && <VolunteerSales products={products} onCompleteSale={handleSaleComplete} />}
+          
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} />}
           {currentView === View.ASSISTANT && <Assistant products={products} transactions={transactions} />}
         </div>
