@@ -13,25 +13,24 @@ export interface Product {
   category: Category;
   stock: number;
   imageUrl?: string;
+  barcode?: string; // <--- NOVO CAMPO
 }
 
 export interface CartItem extends Product {
   quantity: number;
 }
 
-// Novas formas de pagamento
 export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix';
 
 export interface Transaction {
   id: string;
-  date: string; // ISO string
+  date: string;
   items: CartItem[];
   total: number;
   paymentMethod: PaymentMethod;
-  // Campos novos para o relatório da Pastora
   volunteerName?: string;
-  serviceType?: string; // Ex: Culto de Domingo
-  serviceDate?: string; 
+  serviceType?: string;
+  serviceDate?: string;
   serviceTime?: string;
 }
 
