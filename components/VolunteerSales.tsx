@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Product, CartItem, PaymentMethod, Category } from '../types';
-import { Plus, Minus, Trash2, User, Calendar, Clock, Church, ShoppingBag, CreditCard, Search, CheckCircle } from 'lucide-react';
+import { Plus, Minus, Trash2, User, Calendar, Clock, Church, ShoppingBag, CreditCard, Search, CheckCircle, Barcode } from 'lucide-react';
 
 interface VolunteerSalesProps {
   products: Product[];
@@ -13,26 +13,20 @@ interface VolunteerSalesProps {
 }
 
 export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onCompleteSale }) => {
-  // Configuração do Relatório
+  // Configuração
   const [volunteerName, setVolunteerName] = useState('');
-  const [serviceType, setServiceType] = useState(''); // Começa vazio para forçar escolha ou digitação
+  const [serviceType, setServiceType] = useState('');
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportTime, setReportTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
 
-  // Dados da Venda
+  // Venda
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null); // Referência para manter o foco
 
-  // Lista de Cultos Padrão (mas o usuário pode digitar outros)
-  const defaultServices = [
-    "Culto da Família",
-    "Culto Profético",
-    "Arena",
-    "Culto de Fé e Milagres",
-    "Culto Conexão"
-  ];
+  const defaultServices = ["Culto da Família", "Culto Profético", "Arena", "Culto de Fé e Milagres", "Culto Conexão"];
 
-  // Carrinho
+  // Funções do Carrinho
   const addToCart = (product: Product) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
@@ -42,6 +36,27 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
       return [...prev, { ...product, quantity: 1 }];
     });
   };
+
+  // --- NOVA LÓGICA DO LEITOR DE CÓDIGO DE BARRAS ---
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+        // Tenta achar o produto pelo CÓDIGO DE BARRAS exato ou Nome exato
+        const foundProduct = products.find(p => 
+            p.barcode === searchTerm || 
+            p.name.toLowerCase() === searchTerm.toLowerCase()
+        );
+
+        if (foundProduct) {
+            addToCart(foundProduct);
+            setSearchTerm(''); // Limpa o campo para o próximo produto
+            // Mantém o foco no input para leitura contínua
+            setTimeout(() => {
+                searchInputRef.current?.focus();
+            }, 10);
+        }
+    }
+  };
+  // --------------------------------------------------
 
   const updateQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
@@ -58,30 +73,19 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
-  // Filtra produtos apenas se houver busca, para não poluir a tela
+  // Filtra visualmente enquanto digita (para busca manual)
   const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    p.barcode?.includes(searchTerm) // Também filtra se digitar parte do código
   );
 
   const handleFinishSale = (method: PaymentMethod) => {
-    if (!volunteerName.trim()) {
-      alert("⚠️ Preencha o nome do voluntário.");
-      return;
-    }
-    if (!serviceType.trim()) {
-      alert("⚠️ Informe qual é o culto ou evento.");
-      return;
-    }
-    if (cart.length === 0) {
-        alert("⚠️ O carrinho está vazio.");
-        return;
-    }
+    if (!volunteerName.trim()) { alert("⚠️ Preencha o nome do voluntário."); return; }
+    if (!serviceType.trim()) { alert("⚠️ Informe qual é o culto."); return; }
+    if (cart.length === 0) { alert("⚠️ Carrinho vazio."); return; }
 
     onCompleteSale(cart, cartTotal, method, {
-      name: volunteerName,
-      service: serviceType,
-      date: reportDate,
-      time: reportTime
+      name: volunteerName, service: serviceType, date: reportDate, time: reportTime
     });
 
     setCart([]);
@@ -92,7 +96,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
   return (
     <div className="flex flex-col h-full gap-6">
       
-      {/* 1. Cabeçalho do Relatório (Identificação) */}
+      {/* 1. Cabeçalho */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
             <CheckCircle className="text-indigo-600" size={20} />
@@ -101,66 +105,47 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Voluntário</label>
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                     <User size={16} className="text-slate-400"/>
-                    <input 
-                        value={volunteerName}
-                        onChange={e => setVolunteerName(e.target.value)}
-                        placeholder="Nome completo"
-                        className="bg-transparent w-full text-sm outline-none text-slate-700 placeholder-slate-400"
-                    />
+                    <input value={volunteerName} onChange={e => setVolunteerName(e.target.value)} placeholder="Nome completo" className="bg-transparent w-full text-sm outline-none text-slate-700" />
                 </div>
             </div>
-            
-            {/* CULTO: Input com Datalist (Digitar ou Escolher) */}
             <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Culto / Evento</label>
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500 transition-all">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                     <Church size={16} className="text-slate-400"/>
-                    <input 
-                        list="service-options"
-                        value={serviceType}
-                        onChange={e => setServiceType(e.target.value)}
-                        placeholder="Selecione ou digite..."
-                        className="bg-transparent w-full text-sm outline-none text-slate-700 placeholder-slate-400"
-                    />
-                    <datalist id="service-options">
-                        {defaultServices.map(service => (
-                            <option key={service} value={service} />
-                        ))}
-                    </datalist>
+                    <input list="service-options" value={serviceType} onChange={e => setServiceType(e.target.value)} placeholder="Selecione ou digite..." className="bg-transparent w-full text-sm outline-none text-slate-700" />
+                    <datalist id="service-options">{defaultServices.map(s => <option key={s} value={s} />)}</datalist>
                 </div>
             </div>
-
             <div>
                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Data</label>
-                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    <Calendar size={16} className="text-slate-400"/>
-                    <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="bg-transparent w-full text-sm outline-none text-slate-700" />
-                 </div>
+                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"><Calendar size={16} className="text-slate-400"/><input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="bg-transparent w-full text-sm outline-none text-slate-700" /></div>
             </div>
             <div>
                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Horário</label>
-                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    <Clock size={16} className="text-slate-400"/>
-                    <input type="time" value={reportTime} onChange={e => setReportTime(e.target.value)} className="bg-transparent w-full text-sm outline-none text-slate-700" />
-                 </div>
+                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"><Clock size={16} className="text-slate-400"/><input type="time" value={reportTime} onChange={e => setReportTime(e.target.value)} className="bg-transparent w-full text-sm outline-none text-slate-700" /></div>
             </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
         
-        {/* 2. Adicionar Itens (Lista Compacta) */}
+        {/* 2. Busca / Leitor */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-slate-50">
-                <h3 className="font-bold text-slate-700 mb-2">Adicionar Itens ao Relatório</h3>
+                <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                    <Barcode size={18} className="text-slate-500"/> 
+                    Adicionar Itens (Busca ou Leitor)
+                </h3>
                 <div className="relative">
                     <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
                     <input 
-                        placeholder="Digite para buscar produto (ex: Pastel)..." 
+                        ref={searchInputRef}
+                        placeholder="Bipe o código de barras ou digite o nome..." 
                         value={searchTerm} 
                         onChange={e => setSearchTerm(e.target.value)}
+                        onKeyDown={handleSearchKeyDown} // <--- AQUI ESTÁ O SEGREDO
                         className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                     />
@@ -170,8 +155,8 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
             <div className="flex-1 overflow-y-auto p-2">
                 {searchTerm.length === 0 ? (
                      <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                        <Search size={40} className="mb-2" />
-                        <p className="text-sm">Busque um produto acima para adicionar</p>
+                        <Barcode size={40} className="mb-2" />
+                        <p className="text-sm">Aguardando leitura ou busca...</p>
                     </div>
                 ) : (
                     <div className="space-y-1">
@@ -179,7 +164,10 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
                             <div key={product.id} onClick={() => addToCart(product)} className="group flex justify-between items-center p-3 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-indigo-100">
                                 <div>
                                     <p className="font-medium text-slate-700 group-hover:text-indigo-700">{product.name}</p>
-                                    <p className="text-xs text-slate-400">{product.category} • Estoque: {product.stock}</p>
+                                    <p className="text-xs text-slate-400 flex items-center gap-1">
+                                        {product.barcode && <span className="bg-slate-100 px-1 rounded text-[10px]">{product.barcode}</span>}
+                                        <span>• {product.category}</span>
+                                    </p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <span className="font-bold text-slate-600 group-hover:text-indigo-600">R$ {product.price.toFixed(2)}</span>
@@ -189,15 +177,12 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
                                 </div>
                             </div>
                         ))}
-                        {filteredProducts.length === 0 && (
-                            <p className="text-center text-slate-400 text-sm py-4">Nenhum produto encontrado.</p>
-                        )}
                     </div>
                 )}
             </div>
         </div>
 
-        {/* 3. Resumo e Pagamento (Igual, mas ajustado) */}
+        {/* 3. Carrinho */}
         <div className="bg-white rounded-2xl shadow-lg border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-4 bg-indigo-600 text-white flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -254,20 +239,8 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ products, onComp
   );
 };
 
-// Componente auxiliar de botão (para o código ficar mais limpo)
 const PaymentButton = ({ label, onClick, disabled }: { label: string, onClick: () => void, disabled: boolean }) => (
-    <button 
-        onClick={onClick}
-        disabled={disabled}
-        className={`
-            py-2.5 px-3 rounded-xl text-xs font-semibold transition-all flex justify-center items-center gap-2 border
-            ${disabled 
-                ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
-                : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-500 hover:text-indigo-600 hover:bg-indigo-50 shadow-sm hover:shadow'
-            }
-        `}
-    >
-        {label.includes('Crédito') ? <CreditCard size={14}/> : null}
-        {label}
+    <button onClick={onClick} disabled={disabled} className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition-all flex justify-center items-center gap-2 border ${disabled ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-500 hover:text-indigo-600 hover:bg-indigo-50 shadow-sm hover:shadow'}`}>
+        {label.includes('Crédito') ? <CreditCard size={14}/> : null} {label}
     </button>
 );
