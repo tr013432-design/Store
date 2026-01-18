@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Product, Category } from '../types';
-import { Edit2, Save, X, Plus } from 'lucide-react';
+import { Edit2, Save, X, Plus, Barcode } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
@@ -12,12 +12,15 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isAdding, setIsAdding] = useState(false);
+  
+  // Estado para o novo produto (agora com barcode)
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: '',
     price: 0,
     stock: 0,
     category: Category.FOOD,
-    imageUrl: 'https://picsum.photos/200/200'
+    imageUrl: 'https://picsum.photos/200/200',
+    barcode: '' // <--- Novo campo inicial
   });
 
   const handleEditClick = (product: Product) => {
@@ -39,7 +42,8 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
         id: Date.now().toString(),
       } as Product);
       setIsAdding(false);
-      setNewProduct({ name: '', price: 0, stock: 0, category: Category.FOOD, imageUrl: 'https://picsum.photos/200/200' });
+      // Limpa o formulário
+      setNewProduct({ name: '', price: 0, stock: 0, category: Category.FOOD, imageUrl: 'https://picsum.photos/200/200', barcode: '' });
     }
   };
 
@@ -57,14 +61,30 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
 
       {isAdding && (
          <div className="bg-white p-6 rounded-2xl shadow-md border border-indigo-100 animate-fade-in mb-6">
-            <h3 className="font-semibold text-slate-800 mb-4">Adicionar Produto</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                <input 
-                    placeholder="Nome" 
-                    value={newProduct.name}
-                    onChange={e => setNewProduct({...newProduct, name: e.target.value})}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
+            <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                <Plus size={18} className="text-indigo-500"/> Adicionar Produto
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="lg:col-span-2">
+                    <input 
+                        placeholder="Nome do Produto" 
+                        value={newProduct.name}
+                        onChange={e => setNewProduct({...newProduct, name: e.target.value})}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                </div>
+                
+                {/* NOVO CAMPO DE CÓDIGO DE BARRAS */}
+                <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-indigo-500">
+                    <Barcode size={16} className="text-slate-400 shrink-0"/>
+                    <input 
+                        placeholder="Cód. Barras" 
+                        value={newProduct.barcode || ''}
+                        onChange={e => setNewProduct({...newProduct, barcode: e.target.value})}
+                        className="w-full text-sm outline-none bg-transparent"
+                    />
+                </div>
+
                 <select
                     value={newProduct.category}
                     onChange={e => setNewProduct({...newProduct, category: e.target.value as Category})}
@@ -81,15 +101,15 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                 />
                 <input 
                     type="number"
-                    placeholder="Estoque" 
+                    placeholder="Qtd" 
                     value={newProduct.stock}
                     onChange={e => setNewProduct({...newProduct, stock: parseInt(e.target.value)})}
                     className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
-                <div className="flex gap-2">
-                    <button onClick={handleAdd} className="flex-1 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">Salvar</button>
-                    <button onClick={() => setIsAdding(false)} className="px-3 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"><X size={18} /></button>
-                </div>
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+                <button onClick={() => setIsAdding(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors text-sm font-medium">Cancelar</button>
+                <button onClick={handleAdd} className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors text-sm font-medium shadow-sm shadow-emerald-200">Salvar Produto</button>
             </div>
          </div>
       )}
@@ -100,6 +120,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
             <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Produto</th>
+                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cód. Barras</th> {/* Coluna Nova */}
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Categoria</th>
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preço</th>
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estoque</th>
@@ -112,13 +133,14 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                     {editingId === product.id ? (
                         <>
                             <td className="p-4"><input className="w-full border rounded px-2 py-1 text-sm" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></td>
+                            <td className="p-4"><input className="w-24 border rounded px-2 py-1 text-sm" placeholder="Código" value={editForm.barcode || ''} onChange={e => setEditForm({...editForm, barcode: e.target.value})} /></td>
                             <td className="p-4">
                                 <select className="w-full border rounded px-2 py-1 text-sm" value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value as Category})}>
                                     {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </td>
-                            <td className="p-4"><input type="number" className="w-full border rounded px-2 py-1 text-sm" value={editForm.price} onChange={e => setEditForm({...editForm, price: parseFloat(e.target.value)})} /></td>
-                            <td className="p-4"><input type="number" className="w-full border rounded px-2 py-1 text-sm" value={editForm.stock} onChange={e => setEditForm({...editForm, stock: parseInt(e.target.value)})} /></td>
+                            <td className="p-4"><input type="number" className="w-20 border rounded px-2 py-1 text-sm" value={editForm.price} onChange={e => setEditForm({...editForm, price: parseFloat(e.target.value)})} /></td>
+                            <td className="p-4"><input type="number" className="w-16 border rounded px-2 py-1 text-sm" value={editForm.stock} onChange={e => setEditForm({...editForm, stock: parseInt(e.target.value)})} /></td>
                             <td className="p-4 flex justify-end gap-2">
                                 <button onClick={handleSave} className="p-1.5 bg-emerald-100 text-emerald-600 rounded hover:bg-emerald-200"><Save size={16} /></button>
                                 <button onClick={() => setEditingId(null)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200"><X size={16} /></button>
@@ -129,6 +151,9 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                             <td className="p-4 flex items-center gap-3">
                                 <img src={product.imageUrl} alt="" className="w-8 h-8 rounded object-cover bg-slate-200" />
                                 <span className="font-medium text-slate-800 text-sm">{product.name}</span>
+                            </td>
+                            <td className="p-4 text-sm text-slate-500 font-mono">
+                                {product.barcode || <span className="text-slate-300 italic">-</span>}
                             </td>
                             <td className="p-4 text-sm text-slate-600">{product.category}</td>
                             <td className="p-4 text-sm font-medium text-slate-800">R$ {product.price.toFixed(2)}</td>
