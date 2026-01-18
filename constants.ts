@@ -7,7 +7,8 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 8.00,
     category: Category.FOOD,
     stock: 50,
-    imageUrl: 'https://picsum.photos/200/200?random=1'
+    imageUrl: 'https://picsum.photos/200/200?random=1',
+    barcode: '7890001' // Exemplo de código
   },
   {
     id: '2',
@@ -15,7 +16,8 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 8.00,
     category: Category.FOOD,
     stock: 45,
-    imageUrl: 'https://picsum.photos/200/200?random=2'
+    imageUrl: 'https://picsum.photos/200/200?random=2',
+    barcode: '7890002'
   },
   {
     id: '3',
@@ -23,7 +25,8 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 5.00,
     category: Category.DRINK,
     stock: 100,
-    imageUrl: 'https://picsum.photos/200/200?random=3'
+    imageUrl: 'https://picsum.photos/200/200?random=3',
+    barcode: '7894900012345' // Exemplo de código de lata real
   },
   {
     id: '4',
@@ -31,7 +34,8 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 3.00,
     category: Category.DRINK,
     stock: 120,
-    imageUrl: 'https://picsum.photos/200/200?random=4'
+    imageUrl: 'https://picsum.photos/200/200?random=4',
+    barcode: '7890004'
   },
   {
     id: '5',
@@ -70,12 +74,12 @@ export const MOCK_PRODUCTS: Product[] = [
 // Generate some past transactions for the dashboard
 export const MOCK_TRANSACTIONS: Transaction[] = Array.from({ length: 15 }).map((_, i) => ({
   id: `tx-${i}`,
-  date: new Date(Date.now() - i * 86400000 * 0.5).toISOString(), // Spread over last week
+  date: new Date(Date.now() - i * 86400000 * 0.5).toISOString(),
   items: [
     { ...MOCK_PRODUCTS[0], quantity: Math.floor(Math.random() * 3) + 1 },
     { ...MOCK_PRODUCTS[2], quantity: Math.floor(Math.random() * 2) + 1 },
   ],
-  total: 0, // Calculated dynamically usually, but simplified here
+  total: 0, 
   paymentMethod: (Math.random() > 0.5 ? 'Pix' : 'Dinheiro') as 'Pix' | 'Dinheiro',
 })).map(t => ({
   ...t,
