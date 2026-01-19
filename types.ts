@@ -22,6 +22,7 @@ export interface CartItem extends Product {
 
 export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix';
 
+// --- TIPOS PARA RELATÓRIO DE VENDAS ---
 export interface ReportItem {
   productName: string;
   quantity: number;
@@ -29,15 +30,14 @@ export interface ReportItem {
   paymentMethod: PaymentMethod;
 }
 
-// NOVO: Estrutura do Relatório Completo (igual ao papel)
 export interface DailyReport {
   id: string;
   volunteerName: string;
   serviceType: string;
   date: string;
   time: string;
-  items: ReportItem[]; // As linhas da tabela
-  notes: string; // "Retirada do Devocional"
+  items: ReportItem[];
+  notes: string;
   status: 'PENDENTE' | 'VALIDADO';
   totalCash: number;
   totalPix: number;
@@ -46,7 +46,28 @@ export interface DailyReport {
   grandTotal: number;
 }
 
-// Mantemos Transaction para o Dashboard, mas elas só serão criadas após a validação
+// --- NOVOS TIPOS PARA ENCOMENDAS ---
+export interface OrderItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  total: number;
+  // Dados do Cliente
+  customerName: string;
+  customerTeam: string;
+  customerPhone: string;
+}
+
+export interface OrderSheet {
+  id: string;
+  volunteerName: string;
+  serviceType: string;
+  date: string;
+  items: OrderItem[];
+  status: 'PENDENTE' | 'ENTREGUE';
+}
+
+// Transaction mantido apenas para o Dashboard
 export interface Transaction {
   id: string;
   date: string;
