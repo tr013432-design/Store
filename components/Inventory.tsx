@@ -1,26 +1,26 @@
 import React, { useState } from 'react';
 import { Product, Category } from '../types';
-import { Edit2, Save, X, Plus, Barcode } from 'lucide-react';
+import { Edit2, Save, X, Plus, Barcode, Trash2 } from 'lucide-react'; // Adicionado Trash2
 
 interface InventoryProps {
   products: Product[];
   onUpdateProduct: (product: Product) => void;
   onAddProduct: (product: Product) => void;
+  onDeleteProduct: (id: string) => void; // <--- NOVA PROP
 }
 
-export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct, onAddProduct }) => {
+export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct, onAddProduct, onDeleteProduct }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isAdding, setIsAdding] = useState(false);
   
-  // Estado para o novo produto (agora com barcode)
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: '',
     price: 0,
     stock: 0,
     category: Category.FOOD,
     imageUrl: 'https://picsum.photos/200/200',
-    barcode: '' // <--- Novo campo inicial
+    barcode: ''
   });
 
   const handleEditClick = (product: Product) => {
@@ -35,6 +35,12 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
     }
   };
 
+  const handleDelete = (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este produto do estoque?')) {
+        onDeleteProduct(id);
+    }
+  };
+
   const handleAdd = () => {
     if (newProduct.name && newProduct.price !== undefined) {
       onAddProduct({
@@ -42,7 +48,6 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
         id: Date.now().toString(),
       } as Product);
       setIsAdding(false);
-      // Limpa o formulário
       setNewProduct({ name: '', price: 0, stock: 0, category: Category.FOOD, imageUrl: 'https://picsum.photos/200/200', barcode: '' });
     }
   };
@@ -74,7 +79,6 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                     />
                 </div>
                 
-                {/* NOVO CAMPO DE CÓDIGO DE BARRAS */}
                 <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-indigo-500">
                     <Barcode size={16} className="text-slate-400 shrink-0"/>
                     <input 
@@ -120,7 +124,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
             <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Produto</th>
-                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cód. Barras</th> {/* Coluna Nova */}
+                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cód. Barras</th>
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Categoria</th>
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preço</th>
                 <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estoque</th>
@@ -128,7 +132,13 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                 </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-                {products.map(product => (
+                {products.length === 0 ? (
+                    <tr>
+                        <td colSpan={6} className="p-8 text-center text-slate-400">
+                            Nenhum produto cadastrado. Clique em "Novo Produto" para começar.
+                        </td>
+                    </tr>
+                ) : products.map(product => (
                 <tr key={product.id} className="hover:bg-slate-50 transition-colors">
                     {editingId === product.id ? (
                         <>
@@ -149,7 +159,6 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                     ) : (
                         <>
                             <td className="p-4 flex items-center gap-3">
-                                <img src={product.imageUrl} alt="" className="w-8 h-8 rounded object-cover bg-slate-200" />
                                 <span className="font-medium text-slate-800 text-sm">{product.name}</span>
                             </td>
                             <td className="p-4 text-sm text-slate-500 font-mono">
@@ -162,9 +171,12 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onUpdateProduct,
                                     {product.stock} un
                                 </span>
                             </td>
-                            <td className="p-4 text-right">
-                                <button onClick={() => handleEditClick(product)} className="text-slate-400 hover:text-indigo-600 transition-colors p-1">
+                            <td className="p-4 text-right flex justify-end items-center gap-2">
+                                <button onClick={() => handleEditClick(product)} className="text-slate-400 hover:text-indigo-600 transition-colors p-1" title="Editar">
                                     <Edit2 size={16} />
+                                </button>
+                                <button onClick={() => handleDelete(product.id)} className="text-slate-400 hover:text-red-600 transition-colors p-1" title="Excluir">
+                                    <Trash2 size={16} />
                                 </button>
                             </td>
                         </>
