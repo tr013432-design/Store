@@ -4,14 +4,14 @@ import { Product, Transaction, DailyReport, OrderSheet } from './types';
 import { Dashboard } from './components/Dashboard';
 import { VolunteerSales } from './components/VolunteerSales'; 
 import { ReportValidation } from './components/ReportValidation';
-import { Orders } from './components/Orders'; // NOVO COMPONENTE
+import { Orders } from './components/Orders'; 
 import { Inventory } from './components/Inventory';
 import { LayoutDashboard, Package, Menu, Church, ClipboardList, CheckCircle, ShoppingBag } from 'lucide-react';
 
 enum View {
   DASHBOARD,
   VOLUNTEER_REPORT,
-  ORDERS, // NOVA VIEW
+  ORDERS,
   VALIDATION,
   INVENTORY
 }
@@ -21,34 +21,28 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
   const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS as any);
   
+  // Estados de Relatórios e Encomendas
   const [reports, setReports] = useState<DailyReport[]>([]);
-  const [orders, setOrders] = useState<OrderSheet[]>([]); // Estado das encomendas
+  const [orders, setOrders] = useState<OrderSheet[]>([]); 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // 1. Enviar Relatório de Vendas
+  // 1. Receber Relatório de Vendas (Status: Pendente)
   const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => {
-    const newReport: DailyReport = {
-        ...newReportData,
-        id: `rep-${Date.now()}`,
-        status: 'PENDENTE'
-    };
+    const newReport: DailyReport = { ...newReportData, id: `rep-${Date.now()}`, status: 'PENDENTE' };
     setReports(prev => [newReport, ...prev]);
   };
 
-  // 2. Salvar Lista de Encomendas
+  // 2. Receber Lista de Encomendas (Status: Pendente)
   const handleOrderSubmit = (newOrderData: Omit<OrderSheet, 'id' | 'status'>) => {
-    const newSheet: OrderSheet = {
-        ...newOrderData,
-        id: `ord-${Date.now()}`,
-        status: 'PENDENTE'
-    };
+    const newSheet: OrderSheet = { ...newOrderData, id: `ord-${Date.now()}`, status: 'PENDENTE' };
     setOrders(prev => [newSheet, ...prev]);
-    // Nota: Futuramente você pode criar uma tela para visualizar essas encomendas salvas
   };
 
-  // 3. Validar Relatório (Gera transação)
+  // 3. Validar Relatório de Vendas (Pastora Aprova $$$)
   const handleValidateReport = (reportId: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO' } : r));
+    
+    // Gera transação financeira e baixa estoque
     const report = reports.find(r => r.id === reportId);
     if (report) {
         const newTrans: Transaction = {
@@ -66,7 +60,21 @@ const App: React.FC = () => {
             paymentMethod: 'Dinheiro'
         };
         setTransactions(prev => [newTrans, ...prev]);
+        
+        // Baixa estoque
+        setProducts(prevProds => prevProds.map(prod => {
+            const itemSold = report.items.find(i => i.productName === prod.name);
+            return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod;
+        }));
     }
+  };
+
+  // 4. Validar Encomendas (Pastora Aprova Pedidos)
+  const handleValidateOrder = (orderId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE' } : o));
+    alert("Encomendas aprovadas!");
+    // Nota: Aqui não gera transação financeira automática para não duplicar se a pessoa pagar depois no caixa.
+    // Se quiser que gere, é só copiar a lógica do handleValidateReport.
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => {
@@ -91,6 +99,9 @@ const App: React.FC = () => {
     </button>
   );
 
+  // Contagem total de pendências (Vendas + Encomendas) para a notificação vermelha
+  const pendingCount = reports.filter(r => r.status === 'PENDENTE').length + orders.filter(o => o.status === 'PENDENTE').length;
+
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-100 p-6 fixed h-full z-10">
@@ -103,18 +114,21 @@ const App: React.FC = () => {
           <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
           <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório Voluntário" />
           <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
+          
+          {/* Validação Pastoral unificada */}
           <NavItem 
             view={View.VALIDATION} 
             icon={CheckCircle} 
             label="Validação Pastoral" 
-            badge={reports.filter(r => r.status === 'PENDENTE').length} 
+            badge={pendingCount} 
           />
+          
           <div className="my-4 border-t border-slate-100"></div>
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
         </nav>
       </aside>
 
-      {/* Mobile Header e Menu (Ocultados para brevidade, mas devem seguir a mesma lógica de remoção dos itens antigos) */}
+      {/* Menu Mobile */}
       <div className="lg:hidden fixed top-0 w-full bg-white z-20 border-b border-slate-100 px-6 py-4 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-2">
             <Church className="text-indigo-600" />
@@ -130,20 +144,30 @@ const App: React.FC = () => {
               <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
               <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório Voluntário" />
               <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
-              <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" />
+              <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" badge={pendingCount} />
               <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
             </nav>
           </div>
         </div>
       )}
 
-      {/* Conteúdo Principal */}
+      {/* Main Content */}
       <main className="flex-1 lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8 transition-all">
         <div className="max-w-7xl mx-auto">
           {currentView === View.DASHBOARD && <Dashboard transactions={transactions} products={products} />}
           {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} />}
           {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} />}
-          {currentView === View.VALIDATION && <ReportValidation reports={reports} onValidate={handleValidateReport} />}
+          
+          {/* Tela de Validação Unificada */}
+          {currentView === View.VALIDATION && (
+            <ReportValidation 
+                reports={reports} 
+                orders={orders} 
+                onValidateReport={handleValidateReport} 
+                onValidateOrder={handleValidateOrder} 
+            />
+          )}
+          
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} />}
         </div>
       </main>
