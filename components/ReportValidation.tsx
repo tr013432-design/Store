@@ -7,7 +7,6 @@ interface ReportValidationProps {
   orders: OrderSheet[];
   onValidateReport: (id: string) => void;
   onValidateOrder: (id: string) => void;
-  // NOVAS FUNÇÕES PARA DESFAZER
   onUnvalidateReport: (id: string) => void;
   onUnvalidateOrder: (id: string) => void;
 }
@@ -91,7 +90,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
         </div>
       )}
 
-      {/* HISTÓRICO VALIDADO (Agora com opção de desfazer) */}
+      {/* HISTÓRICO VALIDADO */}
       {(validatedReports.length > 0 || validatedOrders.length > 0) && (
         <div className="mt-12 pt-8 border-t border-slate-200">
             <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-6 flex items-center gap-2">
@@ -106,7 +105,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                         isExpanded={expandedId === report.id} 
                         onToggle={() => toggleExpand(report.id)} 
                         onAction={() => {}} 
-                        onUndo={() => onUnvalidateReport(report.id)} // Passando função de desfazer
+                        onUndo={() => onUnvalidateReport(report.id)}
                     />
                 ))}
 
@@ -117,7 +116,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                         isExpanded={expandedId === order.id} 
                         onToggle={() => toggleExpand(order.id)} 
                         onAction={() => {}} 
-                        onUndo={() => onUnvalidateOrder(order.id)} // Passando função de desfazer
+                        onUndo={() => onUnvalidateOrder(order.id)}
                     />
                 ))}
             </div>
@@ -174,7 +173,6 @@ const ReportCard = ({ report, isExpanded, onToggle, onAction, onUndo }: any) => 
                             <div className="flex-1 bg-emerald-50 text-emerald-600 py-2 rounded-xl font-bold text-center text-xs flex justify-center items-center gap-2 border border-emerald-100">
                                 <CheckCircle size={14}/> Relatório Finalizado
                             </div>
-                            {/* BOTÃO DESFAZER */}
                             <button onClick={() => { if(window.confirm('Tem certeza? Isso vai remover a receita do painel e DEVOLVER os itens ao estoque.')) onUndo() }} className="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 rounded-xl border border-slate-200 transition-colors flex items-center gap-2 text-xs font-bold">
                                 <RotateCcw size={14}/> Desvalidar
                             </button>
@@ -216,4 +214,15 @@ const OrderCard = ({ order, isExpanded, onToggle, onAction, onUndo }: any) => {
                         ))}
                      </div>
                     {!isVal ? (
-                        <button onClick={onAction} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 flex justify-center items-center gap-2 shadow-md"><CheckCircle size={18}/> Validar Recebimento das Encomendas
+                        <button onClick={onAction} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 flex justify-center items-center gap-2 shadow-md"><CheckCircle size={18}/> Validar Recebimento das Encomendas</button>
+                    ) : (
+                        <div className="flex gap-2">
+                            <div className="flex-1 bg-emerald-50 text-emerald-600 py-2 rounded-xl font-bold text-center text-xs flex justify-center items-center gap-2 border border-emerald-100"><CheckCircle size={14}/> Encomendas Finalizadas</div>
+                            <button onClick={() => { if(window.confirm('Reabrir lista de encomendas? Isso removerá a receita do caixa.')) onUndo() }} className="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 rounded-xl border border-slate-200 transition-colors flex items-center gap-2 text-xs font-bold"><RotateCcw size={14}/> Reabrir</button>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
