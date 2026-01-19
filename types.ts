@@ -13,7 +13,7 @@ export interface Product {
   category: Category;
   stock: number;
   imageUrl?: string;
-  barcode?: string; // <--- NOVO CAMPO
+  barcode?: string;
 }
 
 export interface CartItem extends Product {
@@ -22,20 +22,35 @@ export interface CartItem extends Product {
 
 export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix';
 
+export interface ReportItem {
+  productName: string;
+  quantity: number;
+  total: number;
+  paymentMethod: PaymentMethod;
+}
+
+// NOVO: Estrutura do Relatório Completo (igual ao papel)
+export interface DailyReport {
+  id: string;
+  volunteerName: string;
+  serviceType: string;
+  date: string;
+  time: string;
+  items: ReportItem[]; // As linhas da tabela
+  notes: string; // "Retirada do Devocional"
+  status: 'PENDENTE' | 'VALIDADO';
+  totalCash: number;
+  totalPix: number;
+  totalDebit: number;
+  totalCredit: number;
+  grandTotal: number;
+}
+
+// Mantemos Transaction para o Dashboard, mas elas só serão criadas após a validação
 export interface Transaction {
   id: string;
   date: string;
   items: CartItem[];
   total: number;
   paymentMethod: PaymentMethod;
-  volunteerName?: string;
-  serviceType?: string;
-  serviceDate?: string;
-  serviceTime?: string;
-}
-
-export interface SalesSummary {
-  totalRevenue: number;
-  totalTransactions: number;
-  topProduct: string;
 }
