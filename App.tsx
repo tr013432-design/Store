@@ -1,21 +1,19 @@
 import React, { useState } from 'react';
 import { MOCK_PRODUCTS, MOCK_TRANSACTIONS } from './constants';
-import { Product, Transaction, DailyReport } from './types';
+import { Product, Transaction, DailyReport, OrderSheet } from './types';
 import { Dashboard } from './components/Dashboard';
-import { POS } from './components/POS';
 import { VolunteerSales } from './components/VolunteerSales'; 
-import { ReportValidation } from './components/ReportValidation'; // NOVO
+import { ReportValidation } from './components/ReportValidation';
+import { Orders } from './components/Orders'; // NOVO COMPONENTE
 import { Inventory } from './components/Inventory';
-import { Assistant } from './components/Assistant';
-import { LayoutDashboard, ShoppingCart, Package, MessageSquare, Menu, Church, ClipboardList, CheckCircle } from 'lucide-react';
+import { LayoutDashboard, Package, Menu, Church, ClipboardList, CheckCircle, ShoppingBag } from 'lucide-react';
 
 enum View {
   DASHBOARD,
-  POS,
   VOLUNTEER_REPORT,
-  VALIDATION, // NOVO
-  INVENTORY,
-  ASSISTANT
+  ORDERS, // NOVA VIEW
+  VALIDATION,
+  INVENTORY
 }
 
 const App: React.FC = () => {
@@ -23,57 +21,54 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
   const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS as any);
   
-  // ESTADO DOS RELATÓRIOS (Começa vazio ou com um de teste)
   const [reports, setReports] = useState<DailyReport[]>([]);
+  const [orders, setOrders] = useState<OrderSheet[]>([]); // Estado das encomendas
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // 1. Voluntário Envia o Relatório
+  // 1. Enviar Relatório de Vendas
   const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => {
     const newReport: DailyReport = {
         ...newReportData,
         id: `rep-${Date.now()}`,
-        status: 'PENDENTE' // Vai para a Pastora
+        status: 'PENDENTE'
     };
     setReports(prev => [newReport, ...prev]);
-    // Nota: NÃO gera transação ainda, nem baixa estoque. Só quando validar.
   };
 
-  // 2. Pastora Valida o Relatório
+  // 2. Salvar Lista de Encomendas
+  const handleOrderSubmit = (newOrderData: Omit<OrderSheet, 'id' | 'status'>) => {
+    const newSheet: OrderSheet = {
+        ...newOrderData,
+        id: `ord-${Date.now()}`,
+        status: 'PENDENTE'
+    };
+    setOrders(prev => [newSheet, ...prev]);
+    // Nota: Futuramente você pode criar uma tela para visualizar essas encomendas salvas
+  };
+
+  // 3. Validar Relatório (Gera transação)
   const handleValidateReport = (reportId: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO' } : r));
-    
-    // AQUI SIM: Gera as transações para o Dashboard e Baixa Estoque
     const report = reports.find(r => r.id === reportId);
     if (report) {
-        // Gera transações
         const newTrans: Transaction = {
             id: `tx-rep-${report.id}`,
             date: new Date().toISOString(),
             items: report.items.map(i => ({ 
-                id: i.productName, // Simplificação (ideal ter ID real)
+                id: i.productName,
                 name: i.productName,
                 price: i.total / i.quantity,
-                category: 'Outros' as any, // Simplificação
+                category: 'Outros' as any,
                 stock: 0,
                 quantity: i.quantity
             })),
             total: report.grandTotal,
-            paymentMethod: 'Dinheiro' // Simplificação para dashboard geral
+            paymentMethod: 'Dinheiro'
         };
         setTransactions(prev => [newTrans, ...prev]);
-
-        // Baixa estoque (Lógica simplificada - ideal usar ID do produto)
-        setProducts(prevProds => prevProds.map(prod => {
-            const itemSold = report.items.find(i => i.productName === prod.name);
-            if (itemSold) {
-                return { ...prod, stock: prod.stock - itemSold.quantity };
-            }
-            return prod;
-        }));
     }
   };
 
-  // ... (Resto das funções de POS/Estoque mantidas) ...
   const handleUpdateProduct = (updatedProduct: Product) => {
     setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
   };
@@ -107,34 +102,49 @@ const App: React.FC = () => {
         <nav className="space-y-2 flex-1">
           <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
           <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório Voluntário" />
-          
-          {/* NOVA ABA PARA A PASTORA */}
+          <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
           <NavItem 
             view={View.VALIDATION} 
             icon={CheckCircle} 
             label="Validação Pastoral" 
             badge={reports.filter(r => r.status === 'PENDENTE').length} 
           />
-          
           <div className="my-4 border-t border-slate-100"></div>
-          <NavItem view={View.POS} icon={ShoppingCart} label="Caixa Rápido" />
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-          <NavItem view={View.ASSISTANT} icon={MessageSquare} label="Assistente IA" />
         </nav>
       </aside>
+
+      {/* Mobile Header e Menu (Ocultados para brevidade, mas devem seguir a mesma lógica de remoção dos itens antigos) */}
+      <div className="lg:hidden fixed top-0 w-full bg-white z-20 border-b border-slate-100 px-6 py-4 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-2">
+            <Church className="text-indigo-600" />
+            <span className="font-bold text-lg text-slate-800">Ecclesia</span>
+        </div>
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-slate-600"><Menu size={24} /></button>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-30 bg-slate-800/50 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)}>
+          <div className="bg-white w-3/4 h-full p-6" onClick={e => e.stopPropagation()}>
+            <nav className="space-y-2">
+              <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
+              <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório Voluntário" />
+              <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
+              <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" />
+              <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* Conteúdo Principal */}
       <main className="flex-1 lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8 transition-all">
         <div className="max-w-7xl mx-auto">
           {currentView === View.DASHBOARD && <Dashboard transactions={transactions} products={products} />}
-          {currentView === View.POS && <POS products={products} onCompleteSale={() => {}} />} {/* POS antigo mantido opcional */}
-          
-          {/* FLUXO NOVO */}
           {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} />}
+          {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} />}
           {currentView === View.VALIDATION && <ReportValidation reports={reports} onValidate={handleValidateReport} />}
-          
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} />}
-          {currentView === View.ASSISTANT && <Assistant products={products} transactions={transactions} />}
         </div>
       </main>
     </div>
