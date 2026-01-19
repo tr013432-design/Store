@@ -18,6 +18,7 @@ enum View {
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
+  // Como agora o MOCK_PRODUCTS está vazio, products começará vazio
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
   const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS as any);
   
@@ -44,7 +45,6 @@ const App: React.FC = () => {
     
     const report = reports.find(r => r.id === reportId);
     if (report) {
-        // Gera transação financeira para o Dashboard
         const newTrans: Transaction = {
             id: `tx-rep-${report.id}`,
             date: new Date().toISOString(),
@@ -57,11 +57,11 @@ const App: React.FC = () => {
                 quantity: i.quantity
             })),
             total: report.grandTotal,
-            paymentMethod: 'Dinheiro' // Simplificação para o dashboard geral
+            paymentMethod: 'Dinheiro'
         };
         setTransactions(prev => [newTrans, ...prev]);
         
-        // Baixa estoque dos produtos vendidos
+        // Baixa estoque
         setProducts(prevProds => prevProds.map(prod => {
             const itemSold = report.items.find(i => i.productName === prod.name);
             return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod;
@@ -69,11 +69,10 @@ const App: React.FC = () => {
     }
   };
 
-  // 4. Validar Encomendas (Pastora Aprova e o Dinheiro Entra no Caixa)
+  // 4. Validar Encomendas
   const handleValidateOrder = (orderId: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE' } : o));
     
-    // AGORA GERA TRANSAÇÃO TAMBÉM (Pois a encomenda já foi paga)
     const orderSheet = orders.find(o => o.id === orderId);
     if (orderSheet) {
         const newTrans: Transaction = {
@@ -96,11 +95,18 @@ const App: React.FC = () => {
     alert("Encomendas validadas e receita adicionada ao painel!");
   };
 
+  // --- GESTÃO DE PRODUTOS ---
   const handleUpdateProduct = (updatedProduct: Product) => {
     setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
   };
+  
   const handleAddProduct = (newProduct: Product) => {
     setProducts(prev => [...prev, newProduct]);
+  };
+
+  // NOVA FUNÇÃO: DELETAR PRODUTO
+  const handleDeleteProduct = (id: string) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
   };
 
   const NavItem = ({ view, icon: Icon, label, badge }: { view: View; icon: any; label: string, badge?: number }) => (
@@ -118,7 +124,6 @@ const App: React.FC = () => {
     </button>
   );
 
-  // Contagem total de pendências (Vendas + Encomendas) para a notificação vermelha
   const pendingCount = reports.filter(r => r.status === 'PENDENTE').length + orders.filter(o => o.status === 'PENDENTE').length;
 
   return (
@@ -134,7 +139,6 @@ const App: React.FC = () => {
           <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório Voluntário" />
           <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
           
-          {/* Validação Pastoral unificada */}
           <NavItem 
             view={View.VALIDATION} 
             icon={CheckCircle} 
@@ -177,7 +181,6 @@ const App: React.FC = () => {
           {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} />}
           {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} />}
           
-          {/* Tela de Validação Unificada */}
           {currentView === View.VALIDATION && (
             <ReportValidation 
                 reports={reports} 
@@ -187,7 +190,14 @@ const App: React.FC = () => {
             />
           )}
           
-          {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} />}
+          {currentView === View.INVENTORY && (
+            <Inventory 
+                products={products} 
+                onUpdateProduct={handleUpdateProduct} 
+                onAddProduct={handleAddProduct}
+                onDeleteProduct={handleDeleteProduct} // <--- Passando a função
+            />
+          )}
         </div>
       </main>
     </div>
