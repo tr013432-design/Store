@@ -6,7 +6,7 @@ import { VolunteerSales } from './components/VolunteerSales';
 import { ReportValidation } from './components/ReportValidation';
 import { Orders } from './components/Orders'; 
 import { Inventory } from './components/Inventory';
-import { Settings } from './components/Settings'; // <--- Importar Settings
+import { Settings } from './components/Settings'; 
 import { LayoutDashboard, Package, Menu, Church, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon } from 'lucide-react';
 
 enum View {
@@ -15,7 +15,7 @@ enum View {
   ORDERS,
   VALIDATION,
   INVENTORY,
-  SETTINGS // <--- Nova View
+  SETTINGS 
 }
 
 const App: React.FC = () => {
@@ -28,18 +28,15 @@ const App: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // --- CONFIGURAÇÕES GLOBAIS ---
-  // Aqui ficam as listas de nomes para usar em todo o app
   const [availableVolunteers, setAvailableVolunteers] = useState<string[]>(['Eloá Batista', 'Thiago Rodrigues']);
   const [availableServices, setAvailableServices] = useState<string[]>(['Culto da Família', 'Culto Profético', 'Arena', 'Culto de Fé e Milagres', 'Culto Conexão']);
 
-  // Funções de Gestão de Configurações
   const addVolunteer = (name: string) => setAvailableVolunteers(prev => [...prev, name]);
   const removeVolunteer = (name: string) => setAvailableVolunteers(prev => prev.filter(v => v !== name));
-  
   const addService = (service: string) => setAvailableServices(prev => [...prev, service]);
   const removeService = (service: string) => setAvailableServices(prev => prev.filter(s => s !== service));
 
-  // ... (Outras funções handleReportSubmit, handleOrderSubmit, etc. permanecem iguais) ...
+  // --- FLUXO DE VENDAS ---
   const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => {
     const newReport: DailyReport = { ...newReportData, id: `rep-${Date.now()}`, status: 'PENDENTE' };
     setReports(prev => [newReport, ...prev]);
@@ -48,6 +45,8 @@ const App: React.FC = () => {
     const newSheet: OrderSheet = { ...newOrderData, id: `ord-${Date.now()}`, status: 'PENDENTE' };
     setOrders(prev => [newSheet, ...prev]);
   };
+
+  // VALIDAR RELATÓRIO (Baixa Estoque + Cria Receita)
   const handleValidateReport = (reportId: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO' } : r));
     const report = reports.find(r => r.id === reportId);
@@ -66,6 +65,25 @@ const App: React.FC = () => {
         }));
     }
   };
+
+  // DESVALIDAR RELATÓRIO (Devolve Estoque + Remove Receita)
+  const handleUnvalidateReport = (reportId: string) => {
+    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'PENDENTE' } : r));
+    
+    // 1. Remove a transação financeira
+    setTransactions(prev => prev.filter(t => t.id !== `tx-rep-${reportId}`));
+
+    // 2. Devolve os produtos para o estoque
+    const report = reports.find(r => r.id === reportId);
+    if (report) {
+        setProducts(prevProds => prevProds.map(prod => {
+            const itemSold = report.items.find(i => i.productName === prod.name);
+            return itemSold ? { ...prod, stock: prod.stock + itemSold.quantity } : prod;
+        }));
+    }
+  };
+
+  // VALIDAR ENCOMENDA
   const handleValidateOrder = (orderId: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE' } : o));
     const orderSheet = orders.find(o => o.id === orderId);
@@ -78,9 +96,19 @@ const App: React.FC = () => {
             paymentMethod: 'Dinheiro'
         };
         setTransactions(prev => [newTrans, ...prev]);
+        // Se encomendas baixam estoque na validação, adicione a lógica aqui igual ao relatório
     }
     alert("Encomendas validadas!");
   };
+
+  // DESVALIDAR ENCOMENDA
+  const handleUnvalidateOrder = (orderId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE' } : o));
+    // Remove transação
+    setTransactions(prev => prev.filter(t => t.id !== `tx-ord-${orderId}`));
+    // Se tiver lógica de devolução de estoque para encomendas, adicione aqui
+  };
+
   const handleUpdateProduct = (updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
   const handleAddProduct = (newProduct: Product) => setProducts(prev => [...prev, newProduct]);
   const handleDeleteProduct = (id: string) => setProducts(prev => prev.filter(p => p.id !== id));
@@ -117,11 +145,7 @@ const App: React.FC = () => {
           <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" badge={pendingCount} />
           <div className="my-4 border-t border-slate-100"></div>
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-          
-          {/* BOTÃO DE CONFIGURAÇÕES NO FINAL DA LISTA */}
-          <div className="mt-auto pt-4">
-             <NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" />
-          </div>
+          <div className="mt-auto pt-4"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
         </nav>
       </aside>
 
@@ -143,51 +167,30 @@ const App: React.FC = () => {
               <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
               <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" badge={pendingCount} />
               <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-              <div className="border-t border-slate-100 my-2 pt-2">
-                <NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" />
-              </div>
+              <div className="border-t border-slate-100 my-2 pt-2"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
             </nav>
           </div>
         </div>
       )}
 
-      {/* Conteúdo Principal */}
+      {/* Main Content */}
       <main className="flex-1 lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8 transition-all">
         <div className="max-w-7xl mx-auto">
           {currentView === View.DASHBOARD && <Dashboard transactions={transactions} products={products} />}
-          
-          {/* Passando as listas para as telas de Vendas e Encomendas */}
-          {currentView === View.VOLUNTEER_REPORT && (
-            <VolunteerSales 
-                products={products} 
-                onSubmitReport={handleReportSubmit} 
-                availableVolunteers={availableVolunteers}
-                availableServices={availableServices}
+          {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
+          {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
+          {currentView === View.VALIDATION && (
+            <ReportValidation 
+                reports={reports} 
+                orders={orders} 
+                onValidateReport={handleValidateReport} 
+                onValidateOrder={handleValidateOrder}
+                onUnvalidateReport={handleUnvalidateReport} // <--- Conectado
+                onUnvalidateOrder={handleUnvalidateOrder}   // <--- Conectado
             />
           )}
-          {currentView === View.ORDERS && (
-            <Orders 
-                products={products} 
-                onSubmitOrders={handleOrderSubmit}
-                availableVolunteers={availableVolunteers}
-                availableServices={availableServices}
-            />
-          )}
-          
-          {currentView === View.VALIDATION && <ReportValidation reports={reports} orders={orders} onValidateReport={handleValidateReport} onValidateOrder={handleValidateOrder} />}
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
-          
-          {/* TELA DE CONFIGURAÇÕES */}
-          {currentView === View.SETTINGS && (
-            <Settings 
-                volunteers={availableVolunteers}
-                services={availableServices}
-                onAddVolunteer={addVolunteer}
-                onRemoveVolunteer={removeVolunteer}
-                onAddService={addService}
-                onRemoveService={removeService}
-            />
-          )}
+          {currentView === View.SETTINGS && <Settings volunteers={availableVolunteers} services={availableServices} onAddVolunteer={addVolunteer} onRemoveVolunteer={removeVolunteer} onAddService={addService} onRemoveService={removeService} />}
         </div>
       </main>
     </div>
