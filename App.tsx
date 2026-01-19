@@ -38,13 +38,13 @@ const App: React.FC = () => {
     setOrders(prev => [newSheet, ...prev]);
   };
 
-  // 3. Validar Relatório de Vendas (Pastora Aprova $$$)
+  // 3. Validar Relatório de Vendas (Pastora Aprova $$$ e Baixa Estoque)
   const handleValidateReport = (reportId: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO' } : r));
     
-    // Gera transação financeira e baixa estoque
     const report = reports.find(r => r.id === reportId);
     if (report) {
+        // Gera transação financeira para o Dashboard
         const newTrans: Transaction = {
             id: `tx-rep-${report.id}`,
             date: new Date().toISOString(),
@@ -57,11 +57,11 @@ const App: React.FC = () => {
                 quantity: i.quantity
             })),
             total: report.grandTotal,
-            paymentMethod: 'Dinheiro'
+            paymentMethod: 'Dinheiro' // Simplificação para o dashboard geral
         };
         setTransactions(prev => [newTrans, ...prev]);
         
-        // Baixa estoque
+        // Baixa estoque dos produtos vendidos
         setProducts(prevProds => prevProds.map(prod => {
             const itemSold = report.items.find(i => i.productName === prod.name);
             return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod;
@@ -69,12 +69,31 @@ const App: React.FC = () => {
     }
   };
 
-  // 4. Validar Encomendas (Pastora Aprova Pedidos)
+  // 4. Validar Encomendas (Pastora Aprova e o Dinheiro Entra no Caixa)
   const handleValidateOrder = (orderId: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE' } : o));
-    alert("Encomendas aprovadas!");
-    // Nota: Aqui não gera transação financeira automática para não duplicar se a pessoa pagar depois no caixa.
-    // Se quiser que gere, é só copiar a lógica do handleValidateReport.
+    
+    // AGORA GERA TRANSAÇÃO TAMBÉM (Pois a encomenda já foi paga)
+    const orderSheet = orders.find(o => o.id === orderId);
+    if (orderSheet) {
+        const newTrans: Transaction = {
+            id: `tx-ord-${orderSheet.id}`,
+            date: new Date().toISOString(),
+            items: orderSheet.items.map(i => ({ 
+                id: i.productName,
+                name: i.productName,
+                price: i.total / i.quantity,
+                category: 'Outros' as any,
+                stock: 0,
+                quantity: i.quantity
+            })),
+            total: orderSheet.grandTotal,
+            paymentMethod: 'Dinheiro'
+        };
+        setTransactions(prev => [newTrans, ...prev]);
+    }
+    
+    alert("Encomendas validadas e receita adicionada ao painel!");
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => {
