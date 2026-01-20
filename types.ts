@@ -27,7 +27,7 @@ export interface ReportItem {
   quantity: number;
   total: number;
   paymentMethod: PaymentMethod;
-  checked?: boolean; // <--- NOVO: Para o checklist
+  checked?: boolean;
 }
 
 export interface DailyReport {
@@ -55,7 +55,7 @@ export interface OrderItem {
   customerName: string;
   customerTeam: string;
   customerPhone: string;
-  checked?: boolean; // <--- NOVO: Para o checklist
+  checked?: boolean;
 }
 
 export interface OrderSheet {
@@ -78,4 +78,12 @@ export interface Transaction {
   items: CartItem[];
   total: number;
   paymentMethod: PaymentMethod;
+}
+
+// --- NOVO: TIPO DE ADMINISTRADOR ---
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
 }
