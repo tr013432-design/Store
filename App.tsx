@@ -23,9 +23,9 @@ const App: React.FC = () => {
   const [availableVolunteers, setAvailableVolunteers] = useState<string[]>(['Eloá Batista', 'Thiago Rodrigues']);
   const [availableServices, setAvailableServices] = useState<string[]>(['Culto da Família', 'Culto Profético', 'Arena', 'Culto de Fé e Milagres']);
   
-  // --- ADMINISTRAÇÃO (Login) ---
+  // ADMINS
   const [admins, setAdmins] = useState<AdminUser[]>([
-    { id: '1', name: 'Pastora', email: 'adm@ecclesia.com', password: '123' } // Admin padrão
+    { id: '1', name: 'Pastora', email: 'adm@ecclesia.com', password: '123' } 
   ]);
 
   const addVolunteer = (name: string) => setAvailableVolunteers(prev => [...prev, name]);
@@ -33,19 +33,19 @@ const App: React.FC = () => {
   const addService = (service: string) => setAvailableServices(prev => [...prev, service]);
   const removeService = (service: string) => setAvailableServices(prev => prev.filter(s => s !== service));
   
-  // Gestão de Admins
   const addAdmin = (newAdmin: Omit<AdminUser, 'id'>) => setAdmins(prev => [...prev, { ...newAdmin, id: Date.now().toString() }]);
   const removeAdmin = (id: string) => setAdmins(prev => prev.filter(a => a.id !== id));
 
-  // ... (Funções handleReportSubmit, handleOrderSubmit, handleValidate... IGUAIS AO CÓDIGO ANTERIOR) ...
+  // --- FLUXO ---
   const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => { setReports(prev => [{ ...newReportData, id: `rep-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
   const handleOrderSubmit = (newOrderData: Omit<OrderSheet, 'id' | 'status'>) => { setOrders(prev => [{ ...newOrderData, id: `ord-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
   
   const handleToggleReportItem = (reportId: string, itemIndex: number) => { setReports(prev => prev.map(r => r.id === reportId ? { ...r, items: r.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : r)); };
   const handleToggleOrderItem = (orderId: string, itemIndex: number) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, items: o.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : o)); };
 
-  const handleValidateReport = (reportId: string) => {
-    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO' } : r));
+  // VALIDAR RELATÓRIO (Agora aceita adminName)
+  const handleValidateReport = (reportId: string, adminName: string) => {
+    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO', validatedBy: adminName } : r));
     const report = reports.find(r => r.id === reportId);
     if (report) {
         const newTrans: Transaction = { id: `tx-rep-${report.id}`, date: new Date().toISOString(), items: report.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), total: report.grandTotal, paymentMethod: 'Dinheiro' };
@@ -53,22 +53,27 @@ const App: React.FC = () => {
         setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
     }
   };
+
   const handleUnvalidateReport = (reportId: string) => {
-    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'PENDENTE' } : r));
+    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'PENDENTE', validatedBy: undefined } : r));
     setTransactions(prev => prev.filter(t => t.id !== `tx-rep-${reportId}`));
     const report = reports.find(r => r.id === reportId);
     if (report) { setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock + itemSold.quantity } : prod; })); }
   };
-  const handleValidateOrder = (orderId: string) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE' } : o));
+
+  // VALIDAR ENCOMENDA (Agora aceita adminName)
+  const handleValidateOrder = (orderId: string, adminName: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE', validatedBy: adminName } : o));
     const orderSheet = orders.find(o => o.id === orderId);
     if (orderSheet) {
         const newTrans: Transaction = { id: `tx-ord-${orderSheet.id}`, date: new Date().toISOString(), items: orderSheet.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), total: orderSheet.grandTotal, paymentMethod: 'Dinheiro' };
         setTransactions(prev => [newTrans, ...prev]);
     }
+    alert("Encomendas validadas!");
   };
+
   const handleUnvalidateOrder = (orderId: string) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE' } : o));
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE', validatedBy: undefined } : o));
     setTransactions(prev => prev.filter(t => t.id !== `tx-ord-${orderId}`));
   };
 
@@ -107,7 +112,7 @@ const App: React.FC = () => {
           {currentView === View.VALIDATION && (
             <ReportValidation 
                 reports={reports} orders={orders} 
-                admins={admins} // <--- PASSANDO ADMINS
+                admins={admins} 
                 onValidateReport={handleValidateReport} onValidateOrder={handleValidateOrder}
                 onUnvalidateReport={handleUnvalidateReport} onUnvalidateOrder={handleUnvalidateOrder}
                 onToggleReportItem={handleToggleReportItem} onToggleOrderItem={handleToggleOrderItem}
