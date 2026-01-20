@@ -22,12 +22,12 @@ export interface CartItem extends Product {
 
 export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix';
 
-// Relatório de Vendas Comuns
 export interface ReportItem {
   productName: string;
   quantity: number;
   total: number;
   paymentMethod: PaymentMethod;
+  checked?: boolean; // <--- NOVO: Para o checklist
 }
 
 export interface DailyReport {
@@ -46,17 +46,16 @@ export interface DailyReport {
   grandTotal: number;
 }
 
-// Relatório de Encomendas
 export interface OrderItem {
   id: string;
   productName: string;
   quantity: number;
   total: number;
-  paymentMethod: PaymentMethod; // <--- NOVO: Forma de Pagamento
-  // Dados do Cliente
+  paymentMethod: PaymentMethod;
   customerName: string;
   customerTeam: string;
   customerPhone: string;
+  checked?: boolean; // <--- NOVO: Para o checklist
 }
 
 export interface OrderSheet {
@@ -66,7 +65,6 @@ export interface OrderSheet {
   date: string;
   items: OrderItem[];
   status: 'PENDENTE' | 'ENTREGUE';
-  // <--- NOVO: Totais Financeiros da Encomenda
   totalCash: number;
   totalPix: number;
   totalDebit: number;
