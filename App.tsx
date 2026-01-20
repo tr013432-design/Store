@@ -82,17 +82,25 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-black flex font-sans text-zinc-100">
       
-      {/* SIDEBAR DARK */}
+   {/* SIDEBAR DARK - Atualizada */}
       <aside className="hidden lg:flex flex-col w-72 bg-zinc-900 border-r border-zinc-800 p-6 fixed h-full z-10">
-        <div className="flex flex-col items-center mb-10">
-            {/* LOGO AREA */}
-            <div className="w-32 h-32 rounded-full border-2 border-green-500 p-1 mb-4 bg-black flex items-center justify-center overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.2)]">
-                 <img src="/logo.png" alt="Sara Store" className="w-full h-full object-contain" />
+        <div className="flex flex-col items-center mb-6 w-full">
+            {/* ÁREA DA LOGO */}
+            {/* Removi a borda CSS e o rounded-full para não cortar sua logo quadrada */}
+            <div className="w-56 h-56 flex items-center justify-center relative">
+                 {/* Efeito de brilho verde atrás da logo */}
+                 <div className="absolute inset-0 bg-green-500/20 blur-3xl rounded-full opacity-50"></div>
+                 
+                 {/* A imagem em si */}
+                 <img 
+                    src="/logo.png" 
+                    alt="Sara Store" 
+                    className="w-full h-full object-contain relative z-10 drop-shadow-2xl" 
+                 />
             </div>
-            <h1 className="text-xl font-black tracking-[0.2em] text-green-500 uppercase text-center leading-tight">
-                SARA<br/>STORE
-            </h1>
-            <p className="text-[10px] tracking-widest text-zinc-500 uppercase mt-1">Freguesia</p>
+            
+            {/* Removi os textos h1 "SARA STORE" e p "Freguesia" aqui, 
+                pois eles já estão escritos dentro da imagem da sua logo */}
         </div>
         
         <nav className="space-y-2 flex-1">
