@@ -46,7 +46,30 @@ const App: React.FC = () => {
     setOrders(prev => [newSheet, ...prev]);
   };
 
-  // VALIDAR RELATÓRIO (Baixa Estoque + Cria Receita)
+  // --- FUNÇÕES DE CONFERÊNCIA (CHECKLIST) ---
+  const handleToggleReportItem = (reportId: string, itemIndex: number) => {
+    setReports(prev => prev.map(r => {
+        if (r.id === reportId) {
+            const newItems = [...r.items];
+            newItems[itemIndex] = { ...newItems[itemIndex], checked: !newItems[itemIndex].checked };
+            return { ...r, items: newItems };
+        }
+        return r;
+    }));
+  };
+
+  const handleToggleOrderItem = (orderId: string, itemIndex: number) => {
+    setOrders(prev => prev.map(o => {
+        if (o.id === orderId) {
+            const newItems = [...o.items];
+            newItems[itemIndex] = { ...newItems[itemIndex], checked: !newItems[itemIndex].checked };
+            return { ...o, items: newItems };
+        }
+        return o;
+    }));
+  };
+
+  // VALIDAR RELATÓRIO
   const handleValidateReport = (reportId: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO' } : r));
     const report = reports.find(r => r.id === reportId);
@@ -66,14 +89,10 @@ const App: React.FC = () => {
     }
   };
 
-  // DESVALIDAR RELATÓRIO (Devolve Estoque + Remove Receita)
+  // DESVALIDAR RELATÓRIO
   const handleUnvalidateReport = (reportId: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'PENDENTE' } : r));
-    
-    // 1. Remove a transação financeira
     setTransactions(prev => prev.filter(t => t.id !== `tx-rep-${reportId}`));
-
-    // 2. Devolve os produtos para o estoque
     const report = reports.find(r => r.id === reportId);
     if (report) {
         setProducts(prevProds => prevProds.map(prod => {
@@ -96,7 +115,6 @@ const App: React.FC = () => {
             paymentMethod: 'Dinheiro'
         };
         setTransactions(prev => [newTrans, ...prev]);
-        // Se encomendas baixam estoque na validação, adicione a lógica aqui igual ao relatório
     }
     alert("Encomendas validadas!");
   };
@@ -104,9 +122,7 @@ const App: React.FC = () => {
   // DESVALIDAR ENCOMENDA
   const handleUnvalidateOrder = (orderId: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE' } : o));
-    // Remove transação
     setTransactions(prev => prev.filter(t => t.id !== `tx-ord-${orderId}`));
-    // Se tiver lógica de devolução de estoque para encomendas, adicione aqui
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
@@ -185,8 +201,11 @@ const App: React.FC = () => {
                 orders={orders} 
                 onValidateReport={handleValidateReport} 
                 onValidateOrder={handleValidateOrder}
-                onUnvalidateReport={handleUnvalidateReport} // <--- Conectado
-                onUnvalidateOrder={handleUnvalidateOrder}   // <--- Conectado
+                onUnvalidateReport={handleUnvalidateReport}
+                onUnvalidateOrder={handleUnvalidateOrder}
+                // NOVAS FUNÇÕES SENDO PASSADAS:
+                onToggleReportItem={handleToggleReportItem}
+                onToggleOrderItem={handleToggleOrderItem}
             />
           )}
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
