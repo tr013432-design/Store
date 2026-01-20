@@ -39,6 +39,7 @@ export interface DailyReport {
   items: ReportItem[];
   notes: string;
   status: 'PENDENTE' | 'VALIDADO';
+  validatedBy?: string; // <--- NOVO CAMPO: Nome do Admin que validou
   totalCash: number;
   totalPix: number;
   totalDebit: number;
@@ -65,6 +66,7 @@ export interface OrderSheet {
   date: string;
   items: OrderItem[];
   status: 'PENDENTE' | 'ENTREGUE';
+  validatedBy?: string; // <--- NOVO CAMPO
   totalCash: number;
   totalPix: number;
   totalDebit: number;
@@ -80,7 +82,6 @@ export interface Transaction {
   paymentMethod: PaymentMethod;
 }
 
-// --- NOVO: TIPO DE ADMINISTRADOR ---
 export interface AdminUser {
   id: string;
   name: string;
