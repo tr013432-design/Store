@@ -7,9 +7,10 @@ import { ReportValidation } from './components/ReportValidation';
 import { Orders } from './components/Orders'; 
 import { Inventory } from './components/Inventory';
 import { Settings } from './components/Settings'; 
-import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut } from 'lucide-react';
+import { Deliveries } from './components/Deliveries'; // <--- IMPORTANTE: Nova Tela
+import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck } from 'lucide-react';
 
-enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS }
+enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES }
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -32,9 +33,7 @@ const App: React.FC = () => {
     { id: '1', name: 'Admin', email: 'admin@sara.com', password: '123' } 
   ]);
 
-  // ... (Funções de add/remove e lógica de negócios mantidas iguais, omitidas para brevidade, mas devem estar aqui) ...
-  // [MANTENHA TODAS AS SUAS FUNÇÕES addVolunteer, handleReportSubmit, handleValidateReport AQUI COMO ANTES]
-  // Vou reimplementar as funções básicas de estado para o código rodar:
+  // --- FUNÇÕES HELPER ---
   const addVolunteer = (name: string) => setAvailableVolunteers(prev => [...prev, name]);
   const removeVolunteer = (name: string) => setAvailableVolunteers(prev => prev.filter(v => v !== name));
   const addService = (service: string) => setAvailableServices(prev => [...prev, service]);
@@ -42,23 +41,69 @@ const App: React.FC = () => {
   const addAdmin = (newAdmin: Omit<AdminUser, 'id'>) => setAdmins(prev => [...prev, { ...newAdmin, id: Date.now().toString() }]);
   const removeAdmin = (id: string) => setAdmins(prev => prev.filter(a => a.id !== id));
   
-  const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => { setReports(prev => [{ ...newReportData, id: `rep-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
-  const handleOrderSubmit = (newOrderData: Omit<OrderSheet, 'id' | 'status'>) => { setOrders(prev => [{ ...newOrderData, id: `ord-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
-  const handleToggleReportItem = (reportId: string, itemIndex: number) => { setReports(prev => prev.map(r => r.id === reportId ? { ...r, items: r.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : r)); };
-  const handleToggleOrderItem = (orderId: string, itemIndex: number) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, items: o.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : o)); };
-  const handleValidateReport = (reportId: string, adminName: string) => { setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO', validatedBy: adminName } : r)); };
-  const handleUnvalidateReport = (reportId: string) => { setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'PENDENTE', validatedBy: undefined } : r)); };
-  const handleValidateOrder = (orderId: string, adminName: string) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE', validatedBy: adminName } : o)); };
-  const handleUnvalidateOrder = (orderId: string) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE', validatedBy: undefined } : o)); };
-  const handleUpdateProduct = (updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
-  const handleAddProduct = (newProduct: Product) => setProducts(prev => [...prev, newProduct]);
-  const handleDeleteProduct = (id: string) => setProducts(prev => prev.filter(p => p.id !== id));
-
+  // --- LÓGICA DE LOGIN ---
   const handleDashboardLogin = () => {
     const admin = admins.find(a => a.email === loginEmail && a.password === loginPass);
     if (admin) { setIsDashboardUnlocked(true); setLoginEmail(''); setLoginPass(''); } else { alert("🚫 Acesso Negado!"); }
   };
   const handleLockDashboard = () => setIsDashboardUnlocked(false);
+
+  // --- LÓGICA DE NEGÓCIOS ---
+  const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => { setReports(prev => [{ ...newReportData, id: `rep-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
+  const handleOrderSubmit = (newOrderData: Omit<OrderSheet, 'id' | 'status'>) => { setOrders(prev => [{ ...newOrderData, id: `ord-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
+  
+  const handleToggleReportItem = (reportId: string, itemIndex: number) => { setReports(prev => prev.map(r => r.id === reportId ? { ...r, items: r.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : r)); };
+  const handleToggleOrderItem = (orderId: string, itemIndex: number) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, items: o.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : o)); };
+
+  const handleValidateReport = (reportId: string, adminName: string) => {
+    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO', validatedBy: adminName } : r));
+    const report = reports.find(r => r.id === reportId);
+    if (report) {
+        const newTrans: Transaction = { id: `tx-rep-${report.id}`, date: new Date().toISOString(), items: report.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), total: report.grandTotal, paymentMethod: 'Dinheiro' };
+        setTransactions(prev => [newTrans, ...prev]);
+        setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
+    }
+  };
+
+  const handleUnvalidateReport = (reportId: string) => {
+    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'PENDENTE', validatedBy: undefined } : r));
+    setTransactions(prev => prev.filter(t => t.id !== `tx-rep-${reportId}`));
+    const report = reports.find(r => r.id === reportId);
+    if (report) { setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock + itemSold.quantity } : prod; })); }
+  };
+
+  const handleValidateOrder = (orderId: string, adminName: string) => {
+    // Status 'ENTREGUE' aqui no OrderSheet significa 'VALIDADO FINANCEIRAMENTE e aguardando retirada'
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE', validatedBy: adminName } : o));
+    const orderSheet = orders.find(o => o.id === orderId);
+    if (orderSheet) {
+        const newTrans: Transaction = { id: `tx-ord-${orderSheet.id}`, date: new Date().toISOString(), items: orderSheet.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), total: orderSheet.grandTotal, paymentMethod: 'Dinheiro' };
+        setTransactions(prev => [newTrans, ...prev]);
+    }
+    alert("✅ Encomenda validada! Os itens agora aparecem na aba 'Entregas'.");
+  };
+
+  const handleUnvalidateOrder = (orderId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE', validatedBy: undefined } : o));
+    setTransactions(prev => prev.filter(t => t.id !== `tx-ord-${orderId}`));
+  };
+
+  // --- NOVA FUNÇÃO: MARCAR ITEM COMO ENTREGUE AO CLIENTE ---
+  const handleMarkItemDelivered = (orderId: string, itemId: string) => {
+    setOrders(prev => prev.map(order => {
+        if (order.id === orderId) {
+            return {
+                ...order,
+                items: order.items.map(item => item.id === itemId ? { ...item, delivered: true } : item)
+            };
+        }
+        return order;
+    }));
+  };
+
+  const handleUpdateProduct = (updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+  const handleAddProduct = (newProduct: Product) => setProducts(prev => [...prev, newProduct]);
+  const handleDeleteProduct = (id: string) => setProducts(prev => prev.filter(p => p.id !== id));
 
   const NavItem = ({ view, icon: Icon, label, badge }: any) => (
     <button
@@ -78,39 +123,39 @@ const App: React.FC = () => {
   );
 
   const pendingCount = reports.filter(r => r.status === 'PENDENTE').length + orders.filter(o => o.status === 'PENDENTE').length;
+  // Conta quantos itens pagos (validados) ainda não foram entregues
+  const pendingDeliveries = orders.filter(o => o.status === 'ENTREGUE').flatMap(o => o.items).filter(i => !i.delivered).length;
 
   return (
     <div className="min-h-screen bg-black flex font-sans text-zinc-100">
       
-   {/* SIDEBAR DARK - Atualizada */}
+      {/* SIDEBAR DARK */}
       <aside className="hidden lg:flex flex-col w-72 bg-zinc-900 border-r border-zinc-800 p-6 fixed h-full z-10">
         <div className="flex flex-col items-center mb-6 w-full">
-            {/* ÁREA DA LOGO */}
-            {/* Removi a borda CSS e o rounded-full para não cortar sua logo quadrada */}
             <div className="w-56 h-56 flex items-center justify-center relative">
-                 {/* Efeito de brilho verde atrás da logo */}
                  <div className="absolute inset-0 bg-green-500/20 blur-3xl rounded-full opacity-50"></div>
-                 
-                 {/* A imagem em si */}
-                 <img 
-                    src="/logo.png" 
-                    alt="Sara Store" 
-                    className="w-full h-full object-contain relative z-10 drop-shadow-2xl" 
+                 <img src="/logo.png" alt="Sara Store" className="w-full h-full object-contain relative z-10 drop-shadow-2xl" 
+                    onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} 
                  />
+                 <div className="hidden relative z-10 flex flex-col items-center animate-fade-in text-center">
+                     <ShoppingBag size={64} className="text-green-500 mb-2" />
+                     <h1 className="text-lg font-black tracking-[0.2em] text-green-500 uppercase text-center leading-none">SARA<br/>STORE</h1>
+                 </div>
             </div>
-            
-            {/* Removi os textos h1 "SARA STORE" e p "Freguesia" aqui, 
-                pois eles já estão escritos dentro da imagem da sua logo */}
         </div>
         
-        <nav className="space-y-2 flex-1">
+        <nav className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
           <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel Geral" />
           <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório Voluntário" />
           <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
           <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" badge={pendingCount} />
-          <div className="my-4 border-t border-zinc-800"></div>
+          
+          {/* NOVA ABA DE ENTREGAS */}
+          <NavItem view={View.DELIVERIES} icon={Truck} label="Entregas" badge={pendingDeliveries} />
+
+          <div className="my-4 border-t border-zinc-800 shrink-0"></div>
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-          <div className="mt-auto pt-4"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
+          <div className="mt-auto pt-4 shrink-0"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
         </nav>
       </aside>
 
@@ -126,15 +171,12 @@ const App: React.FC = () => {
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-30 bg-black/80 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)}>
           <div className="bg-zinc-900 w-3/4 h-full p-6 border-r border-zinc-800" onClick={e => e.stopPropagation()}>
-            <div className="mb-8 text-center">
-                <img src="/logo.png" className="w-20 h-20 mx-auto rounded-full border border-green-500 mb-2" />
-                <h2 className="text-green-500 font-bold tracking-widest">SARA STORE</h2>
-            </div>
             <nav className="space-y-2">
               <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Painel" />
               <NavItem view={View.VOLUNTEER_REPORT} icon={ClipboardList} label="Relatório" />
               <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
               <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação" badge={pendingCount} />
+              <NavItem view={View.DELIVERIES} icon={Truck} label="Entregas" badge={pendingDeliveries} />
               <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
               <div className="border-t border-zinc-800 my-2 pt-2"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
             </nav>
@@ -146,63 +188,7 @@ const App: React.FC = () => {
       <main className="flex-1 lg:ml-72 p-4 lg:p-8 pt-24 lg:pt-8 transition-all bg-black min-h-screen">
         <div className="max-w-7xl mx-auto">
           
-          {/* DASHBOARD LOGIN (DARK THEME) */}
           {currentView === View.DASHBOARD && (
             !isDashboardUnlocked ? (
                 <div className="flex flex-col items-center justify-center h-[80vh] animate-fade-in">
                     <div className="bg-zinc-900 p-8 rounded-3xl shadow-2xl border border-zinc-800 w-full max-w-sm text-center relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-700"></div>
-                        <div className="bg-zinc-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                            <Lock size={36} />
-                        </div>
-                        <h2 className="text-2xl font-black text-white mb-2 tracking-wide uppercase">Acesso Restrito</h2>
-                        <p className="text-xs text-zinc-500 mb-8 uppercase tracking-widest">Gestão Financeira Sara Store</p>
-                        
-                        <div className="space-y-4 text-left">
-                            <div className="group">
-                                <label className="text-[10px] font-bold text-green-500 uppercase ml-1 mb-1 block">E-mail</label>
-                                <div className="flex items-center gap-3 bg-black border border-zinc-700 rounded-xl px-4 py-3 group-focus-within:border-green-500 transition-colors">
-                                    <Mail size={18} className="text-zinc-500"/>
-                                    <input value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="bg-transparent w-full outline-none text-sm text-white placeholder-zinc-700" placeholder="admin@sara.com" />
-                                </div>
-                            </div>
-                            <div className="group">
-                                <label className="text-[10px] font-bold text-green-500 uppercase ml-1 mb-1 block">Senha</label>
-                                <div className="flex items-center gap-3 bg-black border border-zinc-700 rounded-xl px-4 py-3 group-focus-within:border-green-500 transition-colors">
-                                    <Key size={18} className="text-zinc-500"/>
-                                    <input type="password" value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleDashboardLogin()} className="bg-transparent w-full outline-none text-sm text-white placeholder-zinc-700" placeholder="••••••" />
-                                </div>
-                            </div>
-                            <button onClick={handleDashboardLogin} className="w-full bg-green-600 text-black py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-green-500 transition-all shadow-[0_0_20px_rgba(34,197,94,0.4)] mt-4">
-                                Desbloquear
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="relative">
-                    <button 
-                        onClick={handleLockDashboard}
-                        className="absolute top-0 right-0 z-10 bg-zinc-900 border border-zinc-700 text-zinc-400 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-red-900/30 hover:text-red-500 flex items-center gap-2 transition-all"
-                    >
-                        <LogOut size={14} /> Bloquear
-                    </button>
-                    {/* Passando estilos dark para o dashboard se necessário, mas o layout global já cuida do fundo */}
-                    <Dashboard transactions={transactions} products={products} />
-                </div>
-            )
-          )}
-
-          {/* Renderização das outras views (Manter lógica, mas o CSS global já afeta) */}
-          {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
-          {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
-          {currentView === View.VALIDATION && <ReportValidation reports={reports} orders={orders} admins={admins} onValidateReport={handleValidateReport} onValidateOrder={handleValidateOrder} onUnvalidateReport={handleUnvalidateReport} onUnvalidateOrder={handleUnvalidateOrder} onToggleReportItem={handleToggleReportItem} onToggleOrderItem={handleToggleOrderItem} />}
-          {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
-          {currentView === View.SETTINGS && <Settings volunteers={availableVolunteers} services={availableServices} admins={admins} onAddVolunteer={addVolunteer} onRemoveVolunteer={removeVolunteer} onAddService={addService} onRemoveService={removeService} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} />}
-        </div>
-      </main>
-    </div>
-  );
-};
-
-export default App;
