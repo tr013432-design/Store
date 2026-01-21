@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { OrderSheet, OrderItem } from '../types';
-import { CheckCircle, MessageCircle, Package, Search, Truck, Clock } from 'lucide-react';
+import { OrderSheet } from '../types';
+import { CheckCircle, MessageCircle, Package, Search, Truck, Clock, History, CalendarCheck } from 'lucide-react';
 
 interface DeliveriesProps {
   orders: OrderSheet[];
@@ -9,28 +9,42 @@ interface DeliveriesProps {
 
 export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
 
-  // 1. Filtra apenas pedidos VALIDADOS pela pastora
-  // 2. Filtra apenas itens que AINDA NÃO foram entregues (delivered !== true)
-  const pendingItems = orders
-    .filter(o => o.status === 'ENTREGUE') // Status ENTREGUE no OrderSheet significa "Validado Financeiramente"
+  // Processa todos os itens de pedidos validados (Status ENTREGUE no OrderSheet = Validado Financeiramente)
+  const allItems = orders
+    .filter(o => o.status === 'ENTREGUE')
     .flatMap(order => 
-      order.items
-        .filter(item => !item.delivered) // Pega só o que falta entregar
-        .map(item => ({ ...item, orderId: order.id, orderDate: order.date, volunteer: order.volunteerName }))
-    )
-    .filter(item => 
-        item.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.productName.toLowerCase().includes(searchTerm.toLowerCase())
+      order.items.map(item => ({ 
+        ...item, 
+        orderId: order.id, 
+        orderDate: order.date, 
+        volunteer: order.volunteerName 
+      }))
     );
 
-  // Lógica do WhatsApp (Mensagem de CHEGADA)
+  // Filtra de acordo com a aba e a busca
+  const filteredItems = allItems.filter(item => {
+    const isDelivered = !!item.delivered;
+    const matchesTab = activeTab === 'PENDING' ? !isDelivered : isDelivered;
+    const matchesSearch = 
+        item.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.productName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesTab && matchesSearch;
+  });
+
+  // Ordenação: Pendentes (Mais antigos primeiro), Histórico (Mais recentes primeiro)
+  filteredItems.sort((a, b) => {
+      const dateA = new Date(a.orderDate).getTime();
+      const dateB = new Date(b.orderDate).getTime();
+      return activeTab === 'PENDING' ? dateA - dateB : dateB - dateA;
+  });
+
   const handleNotifyArrival = (item: any) => {
     let cleanPhone = item.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = '55' + cleanPhone;
-
     const message = `Olá *${item.customerName}*! 🎉\n\nBoas notícias! Sua encomenda da *Sara Store* acabou de chegar:\n📦 *${item.quantity}x ${item.productName}*\n\nJá está separado aqui para você retirar. Te aguardamos!`;
-
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -43,7 +57,7 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
             <h2 className="text-3xl font-black text-white tracking-tight uppercase flex items-center gap-3">
                 <Truck className="text-green-500" size={32}/> Central de Entregas
             </h2>
-            <p className="text-zinc-500 text-sm mt-1 uppercase tracking-widest">Itens pagos aguardando retirada</p>
+            <p className="text-zinc-500 text-sm mt-1 uppercase tracking-widest">Gestão Logística</p>
         </div>
         
         {/* Busca */}
@@ -58,54 +72,80 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
         </div>
       </div>
 
-      {/* Lista de Pendências */}
+      {/* Abas de Navegação */}
+      <div className="flex gap-4 border-b border-zinc-800">
+          <button 
+            onClick={() => setActiveTab('PENDING')}
+            className={`pb-3 text-sm font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 ${activeTab === 'PENDING' ? 'text-green-500 border-green-500' : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}
+          >
+            <Clock size={16}/> Aguardando Retirada ({allItems.filter(i => !i.delivered).length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('HISTORY')}
+            className={`pb-3 text-sm font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 ${activeTab === 'HISTORY' ? 'text-green-500 border-green-500' : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}
+          >
+            <History size={16}/> Histórico de Entregues
+          </button>
+      </div>
+
+      {/* Lista */}
       <div className="grid grid-cols-1 gap-4">
-        {pendingItems.length === 0 ? (
+        {filteredItems.length === 0 ? (
             <div className="text-center py-20 bg-zinc-900/50 rounded-2xl border border-zinc-800 border-dashed">
                 <Package size={48} className="mx-auto text-zinc-700 mb-4"/>
-                <p className="text-zinc-500 uppercase tracking-widest font-bold">Nenhuma entrega pendente</p>
+                <p className="text-zinc-500 uppercase tracking-widest font-bold">
+                    {activeTab === 'PENDING' ? 'Tudo entregue! Nenhuma pendência.' : 'Nenhum histórico encontrado.'}
+                </p>
             </div>
         ) : (
-            pendingItems.map((item, idx) => (
-                <div key={`${item.orderId}-${idx}`} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 flex flex-col md:flex-row justify-between items-center gap-4 hover:border-zinc-700 transition-all shadow-lg">
+            filteredItems.map((item, idx) => (
+                <div key={`${item.orderId}-${idx}`} className={`p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-center gap-4 transition-all shadow-lg ${activeTab === 'PENDING' ? 'bg-zinc-900 border-zinc-800 hover:border-zinc-700' : 'bg-black border-zinc-900 opacity-75'}`}>
                     
-                    {/* Info do Cliente e Produto */}
+                    {/* Info */}
                     <div className="flex-1 flex items-start gap-4 w-full">
-                        <div className="bg-zinc-800 p-3 rounded-xl text-green-500 hidden md:block">
-                            <Package size={24} />
+                        <div className={`p-3 rounded-xl hidden md:block ${activeTab === 'PENDING' ? 'bg-zinc-800 text-green-500' : 'bg-zinc-900 text-zinc-600'}`}>
+                            {activeTab === 'PENDING' ? <Package size={24} /> : <CheckCircle size={24}/>}
                         </div>
                         <div>
                             <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-bold text-lg text-white">{item.customerName}</h3>
+                                <h3 className={`font-bold text-lg ${activeTab === 'PENDING' ? 'text-white' : 'text-zinc-500 line-through'}`}>{item.customerName}</h3>
                                 <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded uppercase tracking-wide border border-zinc-700">{item.orderDate.split('-').reverse().join('/')}</span>
                             </div>
                             <p className="text-zinc-400 text-sm mb-2 flex items-center gap-1">
-                                <Clock size={12}/> Aguardando retirada de: <strong className="text-green-400">{item.quantity}x {item.productName}</strong>
+                                {activeTab === 'PENDING' ? <Clock size={12}/> : <CalendarCheck size={12}/>} 
+                                {activeTab === 'PENDING' ? 'Aguardando retirada de:' : 'Entregue:'} 
+                                <strong className={activeTab === 'PENDING' ? 'text-green-400' : 'text-zinc-500'}>{item.quantity}x {item.productName}</strong>
                             </p>
                             <p className="text-xs text-zinc-600">Tel: {item.customerPhone}</p>
                         </div>
                     </div>
 
                     {/* Ações */}
-                    <div className="flex gap-3 w-full md:w-auto">
-                        <button 
-                            onClick={() => handleNotifyArrival(item)}
-                            className="flex-1 md:flex-none px-4 py-3 bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all border border-green-500/20"
-                        >
-                            <MessageCircle size={16} /> Avisar Chegada
-                        </button>
-                        
-                        <button 
-                            onClick={() => {
-                                if(window.confirm(`Confirmar que ${item.customerName} retirou o produto?`)) {
-                                    onMarkDelivered(item.orderId, item.id);
-                                }
-                            }}
-                            className="flex-1 md:flex-none px-6 py-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all border border-zinc-700"
-                        >
-                            <CheckCircle size={16} /> Já Entreguei
-                        </button>
-                    </div>
+                    {activeTab === 'PENDING' ? (
+                        <div className="flex gap-3 w-full md:w-auto">
+                            <button 
+                                onClick={() => handleNotifyArrival(item)}
+                                className="flex-1 md:flex-none px-4 py-3 bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all border border-green-500/20"
+                            >
+                                <MessageCircle size={16} /> Avisar
+                            </button>
+                            
+                            <button 
+                                onClick={() => {
+                                    if(window.confirm(`Confirmar que ${item.customerName} retirou o produto?`)) {
+                                        onMarkDelivered(item.orderId, item.id);
+                                    }
+                                }}
+                                className="flex-1 md:flex-none px-6 py-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all border border-zinc-700"
+                            >
+                                <CheckCircle size={16} /> Entregar
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="bg-zinc-900/50 px-4 py-2 rounded-lg border border-zinc-800 text-zinc-500 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                            <CheckCircle size={14} className="text-green-900"/> Concluído
+                        </div>
+                    )}
                 </div>
             ))
         )}
