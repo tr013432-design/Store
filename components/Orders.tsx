@@ -176,27 +176,7 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
                     <thead className="text-zinc-500 sticky top-0 bg-zinc-900 shadow-lg z-10 text-[10px] uppercase tracking-widest">
                         <tr><th className="p-4">Cliente</th><th className="p-4">Pagamento</th><th className="p-4">Produto</th><th className="p-4 text-right">Total</th><th className="p-4 text-center">Ações</th></tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                        {orderList.map((item) => (
-                            <tr key={item.id} className="hover:bg-zinc-800/50 transition-colors group">
-                                <td className="p-4"><p className="font-bold text-white">{item.customerName}</p><p className="text-xs text-zinc-500">{item.customerPhone}</p></td>
-                                <td className="p-4"><span className="text-[10px] border border-zinc-700 px-2 py-1 rounded text-zinc-400">{item.paymentMethod}</span></td>
-                                <td className="p-4"><span className="font-bold text-green-400">{item.quantity}x</span> <span className="text-zinc-300">{item.productName}</span></td>
-                                <td className="p-4 text-right font-bold text-green-500">R$ {item.total.toFixed(2)}</td>
-                                <td className="p-4 flex justify-end items-center gap-2">
-                                    {/* BOTÃO WHATSAPP */}
-                                    <button 
-                                        onClick={() => handleWhatsApp(item)} 
-                                        className="p-2 bg-green-600/10 text-green-500 rounded-lg hover:bg-green-500 hover:text-black transition-all"
-                                        title="Avisar no WhatsApp"
-                                    >
-                                        <MessageCircle size={18} />
-                                    </button>
-                                    <button onClick={() => setOrderList(prev => prev.filter(i => i.id !== item.id))} className="p-2 text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
+                  
                 </table>
                 {orderList.length === 0 && <div className="p-10 text-center text-zinc-600 text-sm">Nenhuma encomenda na lista.</div>}
             </div>
