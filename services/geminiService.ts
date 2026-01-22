@@ -1,39 +1,46 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, Product } from "../types";
 
+// Mantendo a correção da API Key que fizemos antes
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
 
 export const analyzeSales = async (transactions: Transaction[], products: Product[]) => {
   try {
-    const salesData = JSON.stringify(transactions.slice(0, 50)); // Limit payload
+    const salesData = JSON.stringify(transactions.slice(0, 50)); 
     const inventoryData = JSON.stringify(products);
     
+    // Prompt atualizado com a persona Sofia e pedindo a Sugestão
     const prompt = `
-      Atue como um consultor financeiro e gestor de eventos para uma igreja.
-      Analise os seguintes dados de vendas (em JSON) e estoque atual.
+      Atue como Sofia, a consultora analítica da Rodrigues Growth Partners.
+      Analise os dados de vendas (JSON) e estoque abaixo.
+      Seja fria, precisa e foque em resultados.
       
-      Dados de Vendas (Amostra): ${salesData}
-      Dados de Estoque Atual: ${inventoryData}
+      Dados de Vendas: ${salesData}
+      Dados de Estoque: ${inventoryData}
       
-      Por favor, forneça um relatório curto e direto em formato JSON.
+      Gere um JSON com os campos:
+      1. insight: O diagnóstico do problema ou padrão encontrado.
+      2. suggestion: UMA AÇÃO PRÁTICA de Vendas ou Marketing para melhorar os resultados (ex: criar combo, ajustar preço).
+      3. lowStockAlerts: Lista de produtos com estoque baixo.
+      4. projectedRevenue: Estimativa de receita futura.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-flash-preview', // <--- Mantido o modelo original que você ordenou
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            insight: { type: Type.STRING, description: "Uma observação importante sobre o padrão de vendas ou popularidade." },
-            suggestion: { type: Type.STRING, description: "Uma ação recomendada (ex: promoção, reabastecimento)." },
+            insight: { type: Type.STRING, description: "Diagnóstico analítico do padrão de vendas." },
+            suggestion: { type: Type.STRING, description: "Ação estratégica recomendada para aumentar lucro." }, // Novo campo
             lowStockAlerts: { 
               type: Type.ARRAY, 
               items: { type: Type.STRING },
-              description: "Lista de nomes de produtos com estoque baixo (menor que 10)"
+              description: "Produtos com estoque crítico"
             },
-            projectedRevenue: { type: Type.STRING, description: "Uma estimativa simples de vendas para o próximo evento baseada na média." }
+            projectedRevenue: { type: Type.STRING, description: "Estimativa de receita" }
           },
           required: ["insight", "suggestion", "lowStockAlerts", "projectedRevenue"],
         }
@@ -50,7 +57,7 @@ export const analyzeSales = async (transactions: Transaction[], products: Produc
 export const askAssistant = async (question: string, contextData: string) => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-flash-preview', // <--- Mantido aqui também
             contents: `Você é um assistente voluntário experiente da igreja. Use este contexto de dados para responder à pergunta do usuário de forma amigável e breve:
             
             Contexto: ${contextData}
