@@ -1,24 +1,31 @@
 import React, { useState, useRef } from 'react';
 import { Product, PaymentMethod, DailyReport, ReportItem, CartItem } from '../types';
 import { Plus, Minus, Trash2, Search, Barcode, Save, FileText, User, Church, Calendar, Clock } from 'lucide-react';
+// 1. IMPORTANDO A MEMÓRIA
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface VolunteerSalesProps {
   products: Product[];
-  availableVolunteers: string[]; // Nova Prop
-  availableServices: string[];   // Nova Prop
+  availableVolunteers: string[]; 
+  availableServices: string[];   
   onSubmitReport: (report: Omit<DailyReport, 'id' | 'status'>) => void;
 }
 
 export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ 
   products, onSubmitReport, availableVolunteers, availableServices 
 }) => {
-  const [volunteerName, setVolunteerName] = useState('');
-  const [serviceType, setServiceType] = useState('');
+  // 2. BLINDAGEM: Trocando useState por useLocalStorage
+  // Se o voluntário sair da tela para olhar o estoque, quando voltar, tudo estará aqui.
+  const [volunteerName, setVolunteerName] = useLocalStorage('draft_report_volunteer', '');
+  const [serviceType, setServiceType] = useLocalStorage('draft_report_service', '');
+  
+  // Lista de itens e as observações também ficam salvas
+  const [reportItems, setReportItems] = useLocalStorage<ReportItem[]>('draft_report_list', []);
+  const [notes, setNotes] = useLocalStorage('draft_report_notes', '');
+
+  // Data e Hora geralmente queremos a atual, então mantemos useState simples
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportTime, setReportTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-
-  const [reportItems, setReportItems] = useState<ReportItem[]>([]);
-  const [notes, setNotes] = useState('');
 
   const [currentItem, setCurrentItem] = useState<CartItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -74,9 +81,13 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
     };
 
     onSubmitReport(reportData);
+    
+    // LIMPEZA: Só limpa o rascunho se enviou com sucesso
     setReportItems([]);
     setNotes('');
     setVolunteerName('');
+    // serviceType eu optei por NÃO limpar, pois geralmente o voluntário faz vários lançamentos no mesmo culto.
+    
     alert("Relatório enviado para Validação Pastoral!");
   };
 
