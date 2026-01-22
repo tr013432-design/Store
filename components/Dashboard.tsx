@@ -6,8 +6,8 @@ import {
 } from 'recharts';
 import { 
   Sparkles, TrendingUp, DollarSign, Package, Calendar, ChevronLeft, ChevronRight, 
-  BarChart3, Wallet, Target, Edit3, Check, X 
-} from 'lucide-react'; // Adicionei Target, Edit3, Check e X
+  BarChart3, Wallet, Target, Edit3, Check, X, Lightbulb // <--- ADICIONEI LIGHTBULB
+} from 'lucide-react';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -26,11 +26,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
   const [tempGoal, setTempGoal] = useState('');
   const [goals, setGoals] = useState<Record<string, number>>({});
 
-  // Chave única para o mês atual (ex: "2026-0-meta" para Janeiro)
   const monthKey = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}-meta`;
-  const currentGoal = goals[monthKey] || 0; // Se não tiver meta, assume 0
+  const currentGoal = goals[monthKey] || 0;
 
-  // Carregar metas salvas ao iniciar
   useEffect(() => {
     const savedGoals = localStorage.getItem('sara_store_goals');
     if (savedGoals) {
@@ -38,9 +36,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
     }
   }, []);
 
-  // Salvar nova meta
   const handleSaveGoal = () => {
-    const value = parseFloat(tempGoal.replace(',', '.')); // Aceita vírgula ou ponto
+    const value = parseFloat(tempGoal.replace(',', '.'));
     if (!isNaN(value)) {
       const newGoals = { ...goals, [monthKey]: value };
       setGoals(newGoals);
@@ -58,7 +55,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
   const prevMonth = () => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1));
   const nextMonth = () => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1));
   
-  // Formatação para maiúsculo (JANEIRO DE 2026)
   const formattedMonth = selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
 
   const monthTransactions = useMemo(() => {
@@ -72,7 +68,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
   const totalSales = monthTransactions.length;
   const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
   
-  // Cálculo da porcentagem da meta
   const goalProgress = currentGoal > 0 ? Math.min((totalRevenue / currentGoal) * 100, 100) : 0;
 
   const dailyData = useMemo(() => {
@@ -134,14 +129,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
                 <div className="p-3 rounded-xl text-green-500 bg-green-500/10"><DollarSign size={24} /></div>
             </div>
 
-            {/* ÁREA DA META */}
             <div className="mt-4 pt-4 border-t border-zinc-800">
                 <div className="flex justify-between items-center mb-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
                         <Target size={12} /> Meta
                     </span>
                     
-                    {/* Botão de Editar ou Inputs */}
                     {isEditingGoal ? (
                         <div className="flex items-center gap-1">
                             <input 
@@ -164,7 +157,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
                     )}
                 </div>
 
-                {/* Barra de Progresso */}
                 <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div 
                         className="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-500" 
@@ -178,15 +170,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
         <KpiCard icon={BarChart3} label="Vendas" value={totalSales.toString()} color="blue" subtext="Transações concluídas" />
         <KpiCard icon={Wallet} label="Ticket Médio" value={`R$ ${averageTicket.toFixed(2)}`} color="purple" subtext="Média por cliente" />
         
-        {/* CARD IA */}
+        {/* CARD IA COM ESTRATÉGIA (ATUALIZADO) */}
         <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-6 rounded-2xl border border-zinc-700/50 flex flex-col justify-between relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Sparkles size={80} /></div>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-4">
                 <div className="bg-white/5 p-1.5 rounded-lg backdrop-blur-sm"><Sparkles size={16} className="text-green-400" /></div>
-                <p className="font-bold text-[10px] tracking-widest uppercase text-green-500">IA RGP</p>
+                <p className="font-bold text-[10px] tracking-widest uppercase text-green-500">IA RGP • Estratégia</p>
             </div>
-            <div className="relative z-10">
-                {loading ? <div className="flex gap-2 items-center text-sm text-zinc-400"><span className="animate-pulse">Analisando...</span></div> : insight ? <p className="text-sm font-medium leading-relaxed text-zinc-300">"{insight.insight}"</p> : <p className="text-xs text-zinc-500 italic">Insira mais dados para gerar insights.</p>}
+            
+            <div className="relative z-10 space-y-4">
+                {loading ? (
+                    <div className="flex gap-2 items-center text-sm text-zinc-400"><span className="animate-pulse">Analisando Loja...</span></div>
+                ) : insight ? (
+                    <>
+                         {/* Diagnóstico */}
+                        <div>
+                             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Diagnóstico</p>
+                             <p className="text-sm font-medium leading-relaxed text-zinc-300">"{insight.insight}"</p>
+                        </div>
+                        
+                        {/* Linha Divisória */}
+                        <div className="h-px bg-zinc-700/50 w-full" />
+                        
+                        {/* Ação Recomendada */}
+                        <div>
+                             <div className="flex items-center gap-1.5 mb-1">
+                                 <Lightbulb size={12} className="text-yellow-500" />
+                                 <p className="text-[10px] uppercase tracking-wider text-yellow-500 font-bold">Ação Recomendada</p>
+                             </div>
+                             <p className="text-sm font-medium leading-relaxed text-zinc-100">
+                                 {insight.suggestion || "Continue vendendo para gerar novas estratégias."}
+                             </p>
+                        </div>
+                    </>
+                ) : (
+                    <p className="text-xs text-zinc-500 italic">Insira mais dados para a IA gerar estratégias de crescimento.</p>
+                )}
             </div>
         </div>
       </div>
