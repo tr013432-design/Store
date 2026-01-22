@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Product, PaymentMethod, DailyReport, ReportItem, CartItem } from '../types';
 import { Plus, Minus, Trash2, Search, Barcode, Save, FileText, User, Church, Calendar, Clock } from 'lucide-react';
-// 1. IMPORTANDO A MEMÓRIA
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface VolunteerSalesProps {
@@ -14,24 +13,21 @@ interface VolunteerSalesProps {
 export const VolunteerSales: React.FC<VolunteerSalesProps> = ({ 
   products, onSubmitReport, availableVolunteers, availableServices 
 }) => {
-  // 2. BLINDAGEM: Trocando useState por useLocalStorage
-  // Se o voluntário sair da tela para olhar o estoque, quando voltar, tudo estará aqui.
+  // --- DADOS GERAIS ---
   const [volunteerName, setVolunteerName] = useLocalStorage('draft_report_volunteer', '');
   const [serviceType, setServiceType] = useLocalStorage('draft_report_service', '');
-  
-  // Lista de itens e as observações também ficam salvas
   const [reportItems, setReportItems] = useLocalStorage<ReportItem[]>('draft_report_list', []);
   const [notes, setNotes] = useLocalStorage('draft_report_notes', '');
-
-  // Data e Hora geralmente queremos a atual, então mantemos useState simples
+  
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportTime, setReportTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
 
-  const [currentItem, setCurrentItem] = useState<CartItem | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  // --- CORREÇÃO: ITEM EM ANDAMENTO AGORA É SALVO ---
+  const [currentItem, setCurrentItem] = useLocalStorage<CartItem | null>('draft_report_current_item', null);
+  const [searchTerm, setSearchTerm] = useLocalStorage('draft_report_search', '');
+  
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Busca produto
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
         const foundProduct = products.find(p => p.barcode === searchTerm || p.name.toLowerCase() === searchTerm.toLowerCase());
@@ -53,7 +49,10 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
         total: currentItem.price * currentItem.quantity
     };
     setReportItems(prev => [newItem, ...prev]);
+    
+    // LIMPA APENAS A ÁREA DE SELEÇÃO APÓS ADICIONAR
     setCurrentItem(null);
+    
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -82,11 +81,11 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
 
     onSubmitReport(reportData);
     
-    // LIMPEZA: Só limpa o rascunho se enviou com sucesso
+    // LIMPEZA TOTAL (Só no final)
     setReportItems([]);
     setNotes('');
     setVolunteerName('');
-    // serviceType eu optei por NÃO limpar, pois geralmente o voluntário faz vários lançamentos no mesmo culto.
+    setCurrentItem(null); 
     
     alert("Relatório enviado para Validação Pastoral!");
   };
@@ -206,6 +205,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
     </div>
   );
 };
+
 const PayBtn = ({ label, onClick }: { label: string, onClick: () => void }) => (
     <button onClick={onClick} className="bg-white border border-slate-200 py-2 rounded text-[10px] font-bold text-slate-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors">
         {label}
