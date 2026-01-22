@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Product, OrderItem, OrderSheet, PaymentMethod } from '../types';
 import { Plus, Minus, Trash2, User, Phone, Users, Search, Package, Save, Barcode, CreditCard, MessageCircle } from 'lucide-react';
+// 1. IMPORTANDO O HOOK DE MEMÓRIA
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface OrdersProps {
   products: Product[];
@@ -10,12 +12,16 @@ interface OrdersProps {
 }
 
 export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availableVolunteers, availableServices }) => {
-  const [volunteerName, setVolunteerName] = useState('');
-  const [serviceType, setServiceType] = useState('');
+  // 2. BLINDAGEM: Usando useLocalStorage em vez de useState
+  // Esses dados agora sobrevivem se você recarregar a página ou mudar de aba!
+  const [volunteerName, setVolunteerName] = useLocalStorage('draft_orders_volunteer', '');
+  const [serviceType, setServiceType] = useLocalStorage('draft_orders_service', '');
+  const [orderList, setOrderList] = useLocalStorage<OrderItem[]>('draft_orders_list', []);
+  
+  // Data geralmente não precisa salvar, pode ser o dia atual sempre
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [orderList, setOrderList] = useState<OrderItem[]>([]);
-  
+  // Estados temporários (formulário de adição) não precisam de persistência pesada
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -60,20 +66,17 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
+  const handleRemoveItem = (id: string) => {
+    setOrderList(prev => prev.filter(item => item.id !== id));
+  };
+
   // --- LÓGICA WHATSAPP (SOFIA) ---
   const handleWhatsApp = (item: OrderItem) => {
-    // 1. Limpeza de dados (Remove tudo que não for número)
     let cleanPhone = item.customerPhone.replace(/\D/g, '');
-
-    // 2. Validação básica de DDI (Se não tiver 55 e tiver tamanho de celular BR, adiciona)
     if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
         cleanPhone = '55' + cleanPhone;
     }
-
-    // 3. Construção da Mensagem
     const message = `Olá *${item.customerName}*! 👋\n\nSeu pedido na *Sara Store* está pronto:\n📦 *${item.quantity}x ${item.productName}*\n\nPode vir retirar no balcão!`;
-
-    // 4. Codificação e Abertura
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -99,6 +102,7 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
         grandTotal: totalCash + totalPix + totalDebit + totalCredit
     });
 
+    // LIMPEZA: Só limpa depois de salvar com sucesso
     setOrderList([]);
     setVolunteerName('');
     alert("📝 Lista de Encomendas salva com sucesso!");
@@ -176,7 +180,31 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
                     <thead className="text-zinc-500 sticky top-0 bg-zinc-900 shadow-lg z-10 text-[10px] uppercase tracking-widest">
                         <tr><th className="p-4">Cliente</th><th className="p-4">Pagamento</th><th className="p-4">Produto</th><th className="p-4 text-right">Total</th><th className="p-4 text-center">Ações</th></tr>
                     </thead>
-                  
+                    <tbody>
+                        {orderList.map(item => (
+                            <tr key={item.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                                <td className="p-4">
+                                    <p className="font-bold text-white">{item.customerName}</p>
+                                    <div className="flex items-center gap-1 text-xs text-zinc-500">
+                                        <Phone size={10} /> {item.customerPhone}
+                                    </div>
+                                </td>
+                                <td className="p-4 text-zinc-400 text-xs">{item.paymentMethod}</td>
+                                <td className="p-4">
+                                    <span className="text-green-400 font-bold">{item.quantity}x</span> {item.productName}
+                                </td>
+                                <td className="p-4 text-right font-bold text-white">R$ {item.total.toFixed(2)}</td>
+                                <td className="p-4 text-center flex justify-center gap-2">
+                                    <button onClick={() => handleWhatsApp(item)} className="p-2 bg-green-900/30 text-green-500 rounded hover:bg-green-500 hover:text-black transition-colors" title="Avisar no WhatsApp">
+                                        <MessageCircle size={16} />
+                                    </button>
+                                    <button onClick={() => handleRemoveItem(item.id)} className="p-2 bg-red-900/30 text-red-500 rounded hover:bg-red-500 hover:text-white transition-colors" title="Excluir">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
                 </table>
                 {orderList.length === 0 && <div className="p-10 text-center text-zinc-600 text-sm">Nenhuma encomenda na lista.</div>}
             </div>
