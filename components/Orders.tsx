@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Product, OrderItem, OrderSheet, PaymentMethod } from '../types';
 import { Plus, Minus, Trash2, User, Phone, Users, Search, Package, Save, Barcode, CreditCard, MessageCircle } from 'lucide-react';
-// 1. IMPORTANDO O HOOK DE MEMÓRIA
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface OrdersProps {
@@ -12,23 +11,21 @@ interface OrdersProps {
 }
 
 export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availableVolunteers, availableServices }) => {
-  // 2. BLINDAGEM: Usando useLocalStorage em vez de useState
-  // Esses dados agora sobrevivem se você recarregar a página ou mudar de aba!
+  // --- DADOS GERAIS (JÁ ESTAVAM SALVOS) ---
   const [volunteerName, setVolunteerName] = useLocalStorage('draft_orders_volunteer', '');
   const [serviceType, setServiceType] = useLocalStorage('draft_orders_service', '');
   const [orderList, setOrderList] = useLocalStorage<OrderItem[]>('draft_orders_list', []);
-  
-  // Data geralmente não precisa salvar, pode ser o dia atual sempre
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Estados temporários (formulário de adição) não precisam de persistência pesada
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [quantity, setQuantity] = useState(1);
+  // --- CORREÇÃO: AGORA O PRODUTO EM ANDAMENTO TAMBÉM É SALVO ---
+  const [searchTerm, setSearchTerm] = useLocalStorage('draft_orders_search', '');
+  const [selectedProduct, setSelectedProduct] = useLocalStorage<Product | null>('draft_orders_sel_prod', null);
+  const [quantity, setQuantity] = useLocalStorage('draft_orders_qty', 1);
   
-  const [customerName, setCustomerName] = useState('');
-  const [customerTeam, setCustomerTeam] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  // DADOS DO CLIENTE TAMBÉM SALVOS
+  const [customerName, setCustomerName] = useLocalStorage('draft_orders_cust_name', '');
+  const [customerTeam, setCustomerTeam] = useLocalStorage('draft_orders_cust_team', '');
+  const [customerPhone, setCustomerPhone] = useLocalStorage('draft_orders_cust_phone', '');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,8 +58,14 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
     };
 
     setOrderList(prev => [newItem, ...prev]);
+    
+    // LIMPA APENAS A ÁREA DE EDIÇÃO APÓS ADICIONAR NA LISTA
     setSelectedProduct(null);
-    setCustomerName(''); setCustomerTeam(''); setCustomerPhone(''); setQuantity(1);
+    setCustomerName(''); 
+    setCustomerTeam(''); 
+    setCustomerPhone(''); 
+    setQuantity(1);
+    
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -70,7 +73,6 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
     setOrderList(prev => prev.filter(item => item.id !== id));
   };
 
-  // --- LÓGICA WHATSAPP (SOFIA) ---
   const handleWhatsApp = (item: OrderItem) => {
     let cleanPhone = item.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
@@ -102,16 +104,17 @@ export const Orders: React.FC<OrdersProps> = ({ products, onSubmitOrders, availa
         grandTotal: totalCash + totalPix + totalDebit + totalCredit
     });
 
-    // LIMPEZA: Só limpa depois de salvar com sucesso
+    // LIMPEZA TOTAL (Só acontece quando clica em SALVAR LISTA)
     setOrderList([]);
     setVolunteerName('');
+    setSelectedProduct(null);
+    setCustomerName('');
+    setCustomerPhone('');
     alert("📝 Lista de Encomendas salva com sucesso!");
   };
 
   return (
     <div className="flex flex-col h-full gap-6 pb-24 lg:pb-0">
-      
-      {/* Cabeçalho Editável */}
       <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">RESPONSÁVEL</label>
