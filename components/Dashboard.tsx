@@ -4,23 +4,62 @@ import { analyzeSales } from '../services/geminiService';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
-import { Sparkles, TrendingUp, DollarSign, Package, Calendar, ChevronLeft, ChevronRight, BarChart3, Wallet } from 'lucide-react';
+import { 
+  Sparkles, TrendingUp, DollarSign, Package, Calendar, ChevronLeft, ChevronRight, 
+  BarChart3, Wallet, Target, Edit3, Check, X 
+} from 'lucide-react'; // Adicionei Target, Edit3, Check e X
 
 interface DashboardProps {
   transactions: Transaction[];
   products: Product[];
 }
 
-const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']; // Verde primeiro
+const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) => {
   const [insight, setInsight] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
+  // --- NOVA LÓGICA DE META ---
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [tempGoal, setTempGoal] = useState('');
+  const [goals, setGoals] = useState<Record<string, number>>({});
+
+  // Chave única para o mês atual (ex: "2026-0-meta" para Janeiro)
+  const monthKey = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}-meta`;
+  const currentGoal = goals[monthKey] || 0; // Se não tiver meta, assume 0
+
+  // Carregar metas salvas ao iniciar
+  useEffect(() => {
+    const savedGoals = localStorage.getItem('sara_store_goals');
+    if (savedGoals) {
+      setGoals(JSON.parse(savedGoals));
+    }
+  }, []);
+
+  // Salvar nova meta
+  const handleSaveGoal = () => {
+    const value = parseFloat(tempGoal.replace(',', '.')); // Aceita vírgula ou ponto
+    if (!isNaN(value)) {
+      const newGoals = { ...goals, [monthKey]: value };
+      setGoals(newGoals);
+      localStorage.setItem('sara_store_goals', JSON.stringify(newGoals));
+    }
+    setIsEditingGoal(false);
+  };
+
+  const startEditing = () => {
+    setTempGoal(currentGoal.toString());
+    setIsEditingGoal(true);
+  };
+  // ---------------------------
+
   const prevMonth = () => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1));
   const nextMonth = () => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1));
-  const formattedMonth = selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  
+  // Formatação para maiúsculo (JANEIRO DE 2026)
+  const formattedMonth = selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
 
   const monthTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -33,6 +72,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
   const totalSales = monthTransactions.length;
   const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
   
+  // Cálculo da porcentagem da meta
+  const goalProgress = currentGoal > 0 ? Math.min((totalRevenue / currentGoal) * 100, 100) : 0;
+
   const dailyData = useMemo(() => {
     const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
     const data = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, revenue: 0, count: 0 }));
@@ -49,12 +91,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
     return Object.entries(categories).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [monthTransactions]);
 
-  const paymentMethods = useMemo(() => {
-    const methods: Record<string, number> = {};
-    monthTransactions.forEach(t => { methods[t.paymentMethod] = (methods[t.paymentMethod] || 0) + 1; });
-    return Object.entries(methods).map(([name, value]) => ({ name, value }));
-  }, [monthTransactions]);
-
   useEffect(() => {
     const fetchInsight = async () => {
       if (monthTransactions.length > 5) {
@@ -69,6 +105,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
 
   return (
     <div className="space-y-8 animate-fade-in pb-20">
+      
+      {/* CABEÇALHO COM NAVEGAÇÃO DE MÊS */}
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-zinc-800 pb-6">
         <div>
             <h2 className="text-3xl font-black text-white tracking-tight uppercase">Performance</h2>
@@ -76,7 +114,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
         </div>
         <div className="flex items-center bg-zinc-900 rounded-xl border border-zinc-800 p-1">
             <button onClick={prevMonth} className="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors"><ChevronLeft size={20}/></button>
-            <div className="flex items-center gap-2 px-4 min-w-[180px] justify-center font-bold text-zinc-200 uppercase tracking-wider text-sm">
+            <div className="flex items-center gap-2 px-4 min-w-[200px] justify-center font-bold text-zinc-200 uppercase tracking-wider text-sm">
                 <Calendar size={16} className="text-green-500 mb-0.5" />
                 <span>{formattedMonth}</span>
             </div>
@@ -85,10 +123,62 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KpiCard icon={DollarSign} label="Receita Mensal" value={`R$ ${totalRevenue.toFixed(2)}`} color="green" subtext="Faturamento bruto" />
+        
+        {/* CARD DE RECEITA COM META INTEGRADA */}
+        <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 flex flex-col justify-between relative group">
+            <div className="flex justify-between items-start mb-2">
+                <div>
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Receita Mensal</p>
+                    <h3 className="text-2xl font-black text-white mt-1">R$ {totalRevenue.toFixed(2)}</h3>
+                </div>
+                <div className="p-3 rounded-xl text-green-500 bg-green-500/10"><DollarSign size={24} /></div>
+            </div>
+
+            {/* ÁREA DA META */}
+            <div className="mt-4 pt-4 border-t border-zinc-800">
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                        <Target size={12} /> Meta
+                    </span>
+                    
+                    {/* Botão de Editar ou Inputs */}
+                    {isEditingGoal ? (
+                        <div className="flex items-center gap-1">
+                            <input 
+                                autoFocus
+                                type="number" 
+                                value={tempGoal}
+                                onChange={(e) => setTempGoal(e.target.value)}
+                                className="w-20 bg-zinc-950 border border-zinc-700 rounded px-1 text-xs text-white focus:outline-none focus:border-green-500"
+                            />
+                            <button onClick={handleSaveGoal} className="p-1 bg-green-600 rounded hover:bg-green-500 text-white"><Check size={12}/></button>
+                            <button onClick={() => setIsEditingGoal(false)} className="p-1 bg-zinc-700 rounded hover:bg-zinc-600 text-white"><X size={12}/></button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 group cursor-pointer" onClick={startEditing}>
+                            <span className="text-xs font-semibold text-zinc-300">
+                                {currentGoal > 0 ? `R$ ${currentGoal.toLocaleString('pt-BR')}` : 'Definir Meta'}
+                            </span>
+                            <Edit3 size={12} className="text-zinc-600 group-hover:text-green-500 transition-colors" />
+                        </div>
+                    )}
+                </div>
+
+                {/* Barra de Progresso */}
+                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div 
+                        className="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-500" 
+                        style={{ width: `${goalProgress}%` }}
+                    />
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-1 text-right">{goalProgress.toFixed(0)}% atingido</p>
+            </div>
+        </div>
+
         <KpiCard icon={BarChart3} label="Vendas" value={totalSales.toString()} color="blue" subtext="Transações concluídas" />
         <KpiCard icon={Wallet} label="Ticket Médio" value={`R$ ${averageTicket.toFixed(2)}`} color="purple" subtext="Média por cliente" />
         
+        {/* CARD IA */}
         <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-6 rounded-2xl border border-zinc-700/50 flex flex-col justify-between relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Sparkles size={80} /></div>
             <div className="flex items-center gap-2 mb-3">
