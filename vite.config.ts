@@ -7,15 +7,23 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      // CORREÇÃO 1: Removi arquivos inexistentes para evitar erro 404 no cache.
+      // Adicionei apenas o 'logo.png' que vi que existe na sua pasta public.
+      includeAssets: ['logo.png'], 
+      
       manifest: {
         name: 'Sara Store Gestão',
         short_name: 'Sara Store',
         description: 'Sistema de Gestão Financeira e Estoque - Sara Store',
-        theme_color: '#09090b', // Cor de fundo do app (Preto Zinc-950)
+        theme_color: '#09090b',
         background_color: '#09090b',
-        display: 'standalone', // Faz abrir sem a barra de navegador (Tela Cheia)
+        display: 'standalone',
         orientation: 'portrait',
+        
+        // CORREÇÃO 2: Adicionado start_url e scope (Essencial para corrigir a Tela Preta)
+        start_url: '/',
+        scope: '/',
+
         icons: [
           {
             src: 'pwa-64x64.png',
