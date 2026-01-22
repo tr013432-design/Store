@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 
-// Hook personalizado para manter dados salvos mesmo saindo da tela
+// Hook personalizado para salvar dados no navegador automaticamente
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // 1. Ao iniciar, tenta buscar o que estava salvo no navegador
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
+      // Pega o item pelo nome da chave (ex: 'draft_orders_list')
       const item = window.localStorage.getItem(key);
-      // Se achar algo salvo, usa isso. Se não, usa o valor inicial (vazio)
+      // Se achar, converte de volta pra objeto/array. Se não, usa o valor inicial.
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
       console.error("Erro ao ler do localStorage:", error);
@@ -14,7 +15,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   });
 
-  // 2. Sempre que você digita algo, ele salva automaticamente no navegador
+  // 2. Sempre que a variável mudar, salva automaticamente no navegador
   useEffect(() => {
     try {
       window.localStorage.setItem(key, JSON.stringify(storedValue));
@@ -23,5 +24,6 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   }, [key, storedValue]);
 
+  // Retorna igualzinho ao useState: o valor e a função de atualizar
   return [storedValue, setStoredValue] as const;
 }
