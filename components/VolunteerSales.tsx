@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Product, PaymentMethod, DailyReport, ReportItem, CartItem } from '../types';
-import { Plus, Minus, Trash2, Search, Barcode, Save, FileText, User, Church, Calendar, Clock } from 'lucide-react';
+import { Plus, Minus, Trash2, Search, Barcode, Save, FileText, User, Church, Calendar, Clock, ScanLine } from 'lucide-react'; // <--- ADICIONEI ScanLine
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { BarcodeScanner } from './BarcodeScanner'; // <--- IMPORTEI O SCANNER
 
 interface VolunteerSalesProps {
   products: Product[];
@@ -22,11 +23,27 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportTime, setReportTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
 
-  // --- CORREÇÃO: ITEM EM ANDAMENTO AGORA É SALVO ---
   const [currentItem, setCurrentItem] = useLocalStorage<CartItem | null>('draft_report_current_item', null);
   const [searchTerm, setSearchTerm] = useLocalStorage('draft_report_search', '');
   
+  // --- NOVO ESTADO DO SCANNER ---
+  const [isScanning, setIsScanning] = useState(false);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Lógica quando a câmera lê o código
+  const handleScanSuccess = (code: string) => {
+    const foundProduct = products.find(p => p.barcode === code);
+    if (foundProduct) {
+        // Seleciona o produto automaticamente
+        setCurrentItem({ ...foundProduct, quantity: 1 });
+        setSearchTerm(''); 
+        setIsScanning(false); // Fecha a câmera
+    } else {
+        alert(`Produto com código ${code} não encontrado!`);
+        setIsScanning(false);
+    }
+  };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -93,6 +110,14 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
   return (
     <div className="flex flex-col h-full gap-6 pb-24 lg:pb-0">
       
+      {/* MODAL DO SCANNER (Só aparece se isScanning for true) */}
+      {isScanning && (
+        <BarcodeScanner 
+            onScan={handleScanSuccess} 
+            onClose={() => setIsScanning(false)} 
+        />
+      )}
+
       {/* Cabeçalho Editável com Datalists */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
@@ -118,17 +143,30 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
         <div className="lg:col-span-1 flex flex-col gap-4">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Barcode size={20}/> Adicionar Linha</h3>
-                <div className="relative mb-6">
-                    <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                    <input 
-                        ref={searchInputRef}
-                        placeholder="Bipe ou digite..." 
-                        value={searchTerm} 
-                        onChange={e => setSearchTerm(e.target.value)}
-                        onKeyDown={handleSearchKeyDown}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
+                
+                {/* ÁREA DE BUSCA + BOTÃO SCANNER */}
+                <div className="flex gap-2 mb-6">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                        <input 
+                            ref={searchInputRef}
+                            placeholder="Bipe, digite ou escaneie..." 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)}
+                            onKeyDown={handleSearchKeyDown}
+                            className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                    </div>
+                    {/* BOTÃO DA CÂMERA */}
+                    <button 
+                        onClick={() => setIsScanning(true)}
+                        className="p-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-600 transition-colors"
+                        title="Ler código com a câmera"
+                    >
+                        <ScanLine size={20} />
+                    </button>
                 </div>
+
                 {currentItem ? (
                     <div className="animate-fade-in space-y-4">
                         <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
