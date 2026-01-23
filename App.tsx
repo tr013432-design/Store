@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MOCK_PRODUCTS, MOCK_TRANSACTIONS } from './constants';
-import { Product, Transaction, DailyReport, OrderSheet, AdminUser } from './types';
+// Note: As interfaces acima já estão definidas neste arquivo para facilitar, 
+// mas no seu projeto real elas viriam de './types'
 import { Dashboard } from './components/Dashboard';
 import { VolunteerSales } from './components/VolunteerSales'; 
 import { ReportValidation } from './components/ReportValidation';
@@ -50,11 +51,28 @@ const App: React.FC = () => {
   const handleToggleReportItem = (reportId: string, itemIndex: number) => { setReports(prev => prev.map(r => r.id === reportId ? { ...r, items: r.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : r)); };
   const handleToggleOrderItem = (orderId: string, itemIndex: number) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, items: o.items.map((it, idx) => idx === itemIndex ? { ...it, checked: !it.checked } : it) } : o)); };
 
+  // --- CORREÇÃO AQUI: Transferência de Nome na Validação ---
   const handleValidateReport = (reportId: string, adminName: string) => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO', validatedBy: adminName } : r));
     const report = reports.find(r => r.id === reportId);
     if (report) {
-        const newTrans: Transaction = { id: `tx-rep-${report.id}`, date: new Date().toISOString(), items: report.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), total: report.grandTotal, paymentMethod: 'Dinheiro' };
+        const newTrans: Transaction = { 
+            id: `tx-rep-${report.id}`, 
+            date: report.date, // Usa a data do relatório, não a data de hoje
+            items: report.items.map(i => ({ 
+                id: i.productName, 
+                name: i.productName, 
+                price: i.total / i.quantity, 
+                category: 'Outros' as any, 
+                stock: 0, 
+                quantity: i.quantity 
+            })), 
+            total: report.grandTotal, 
+            paymentMethod: 'Dinheiro', // Simplificação para transação unificada
+            // Copia os dados vitais para o Ranking:
+            volunteerName: report.volunteerName, 
+            serviceType: report.serviceType 
+        };
         setTransactions(prev => [newTrans, ...prev]);
         setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
     }
@@ -67,11 +85,28 @@ const App: React.FC = () => {
     if (report) { setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock + itemSold.quantity } : prod; })); }
   };
 
+  // --- CORREÇÃO AQUI TAMBÉM: Transferência de Nome nas Encomendas ---
   const handleValidateOrder = (orderId: string, adminName: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE', validatedBy: adminName } : o));
     const orderSheet = orders.find(o => o.id === orderId);
     if (orderSheet) {
-        const newTrans: Transaction = { id: `tx-ord-${orderSheet.id}`, date: new Date().toISOString(), items: orderSheet.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), total: orderSheet.grandTotal, paymentMethod: 'Dinheiro' };
+        const newTrans: Transaction = { 
+            id: `tx-ord-${orderSheet.id}`, 
+            date: orderSheet.date,
+            items: orderSheet.items.map(i => ({ 
+                id: i.productName, 
+                name: i.productName, 
+                price: i.total / i.quantity, 
+                category: 'Outros' as any, 
+                stock: 0, 
+                quantity: i.quantity 
+            })), 
+            total: orderSheet.grandTotal, 
+            paymentMethod: 'Dinheiro',
+            // Copia os dados vitais para o Ranking:
+            volunteerName: orderSheet.volunteerName,
+            serviceType: orderSheet.serviceType
+        };
         setTransactions(prev => [newTrans, ...prev]);
     }
     alert("Encomenda validada e enviada para Entregas!");
