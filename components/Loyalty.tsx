@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Customer } from '../types';
-import { Trophy, Search, Gift, Phone, Calendar, Plus, Star } from 'lucide-react';
+import { Trophy, Search, Gift, Phone, Plus, Star, AlertCircle } from 'lucide-react';
 
 interface LoyaltyProps {
   customers: Customer[];
@@ -12,11 +12,16 @@ export const Loyalty: React.FC<LoyaltyProps> = ({ customers, onManualAddPoints, 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  // Filtra clientes pelo nome ou telefone
+  // Filtra e ordena
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.id.includes(searchTerm)
-  ).sort((a, b) => b.points - a.points); // Ordena por quem tem mais pontos
+  ).sort((a, b) => b.points - a.points);
+
+  // Lógica Visual Inteligente
+  const rewardsAvailable = selectedCustomer ? Math.floor(selectedCustomer.points / 100) : 0;
+  const pointsToNext = selectedCustomer ? selectedCustomer.points % 100 : 0;
+  const missingPoints = 100 - pointsToNext;
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
@@ -30,7 +35,6 @@ export const Loyalty: React.FC<LoyaltyProps> = ({ customers, onManualAddPoints, 
             <p className="text-zinc-500 text-sm mt-1 font-bold tracking-widest uppercase">Programa de Fidelidade</p>
         </div>
         
-        {/* BUSCA DE CLIENTE */}
         <div className="relative w-full md:w-96">
             <Search className="absolute left-4 top-3.5 text-zinc-500" size={20} />
             <input 
@@ -44,7 +48,7 @@ export const Loyalty: React.FC<LoyaltyProps> = ({ customers, onManualAddPoints, 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* LISTA DE CLIENTES */}
+        {/* LISTA */}
         <div className="lg:col-span-2 space-y-4">
             {filteredCustomers.length === 0 ? (
                 <div className="text-center py-10 text-zinc-500">Nenhum cliente encontrado.</div>
@@ -61,7 +65,7 @@ export const Loyalty: React.FC<LoyaltyProps> = ({ customers, onManualAddPoints, 
                             </div>
                         </div>
                         <div className="text-right">
-                            <p className="text-2xl font-black text-yellow-500">{customer.points}</p>
+                            <p className={`text-2xl font-black ${customer.points < 0 ? 'text-red-500' : 'text-yellow-500'}`}>{customer.points}</p>
                             <p className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Pontos</p>
                         </div>
                     </div>
@@ -69,16 +73,25 @@ export const Loyalty: React.FC<LoyaltyProps> = ({ customers, onManualAddPoints, 
             )}
         </div>
 
-        {/* DETALHES E AÇÕES */}
+        {/* DETALHES */}
         <div className="lg:col-span-1">
             {selectedCustomer ? (
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
                     <div className="text-center mb-6">
-                        <div className="w-20 h-20 mx-auto rounded-full bg-yellow-500/10 flex items-center justify-center mb-3">
+                        <div className="w-20 h-20 mx-auto rounded-full bg-yellow-500/10 flex items-center justify-center mb-3 relative">
                             <Trophy size={40} className="text-yellow-500" />
+                            {rewardsAvailable > 0 && (
+                                <div className="absolute -top-2 -right-2 bg-red-600 text-white font-bold w-8 h-8 flex items-center justify-center rounded-full border-4 border-zinc-900 shadow-lg">
+                                    {rewardsAvailable}
+                                </div>
+                            )}
                         </div>
                         <h2 className="text-2xl font-bold text-white">{selectedCustomer.name}</h2>
-                        <p className="text-zinc-500 text-sm">Cliente desde {new Date(selectedCustomer.history[0]?.date || Date.now()).toLocaleDateString()}</p>
+                        {rewardsAvailable > 0 ? (
+                            <p className="text-yellow-400 font-bold text-sm animate-pulse">🎉 {rewardsAvailable} PRÊMIO(S) DISPONÍVEL(IS)!</p>
+                        ) : (
+                            <p className="text-zinc-500 text-sm">Continue comprando para ganhar!</p>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-6">
@@ -92,44 +105,65 @@ export const Loyalty: React.FC<LoyaltyProps> = ({ customers, onManualAddPoints, 
                         </div>
                     </div>
 
-                    {/* BARRA DE PROGRESSO DO PRÊMIO */}
+                    {/* BARRA DE PROGRESSO CÍCLICA */}
                     <div className="mb-6">
                         <div className="flex justify-between text-xs font-bold uppercase mb-1">
-                            <span className="text-yellow-500">Próximo Prêmio</span>
-                            <span className="text-zinc-400">100 pts</span>
+                            <span className="text-yellow-500">Próximo Nível</span>
+                            <span className="text-zinc-400">{pointsToNext} / 100</span>
                         </div>
-                        <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-yellow-500" style={{ width: `${Math.min((selectedCustomer.points / 100) * 100, 100)}%` }}></div>
+                        <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden relative">
+                            {/* Marcadores de fundo */}
+                            <div className="absolute inset-0 flex justify-between px-1">
+                                <div className="w-px h-full bg-zinc-700/50"></div>
+                                <div className="w-px h-full bg-zinc-700/50"></div>
+                                <div className="w-px h-full bg-zinc-700/50"></div>
+                            </div>
+                            <div 
+                                className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 transition-all duration-500" 
+                                style={{ width: `${pointsToNext}%` }}
+                            ></div>
                         </div>
-                        <p className="text-xs text-center mt-2 text-zinc-500">Faltam {Math.max(0, 100 - selectedCustomer.points)} pontos para resgatar um brinde!</p>
+                        <p className="text-xs text-center mt-2 text-zinc-500">
+                            Faltam <strong>{missingPoints} pontos</strong> para o próximo brinde.
+                        </p>
                     </div>
 
-                    {/* BOTÕES DE AÇÃO */}
+                    {/* AÇÕES */}
                     <div className="space-y-3">
                         <button 
                             onClick={() => {
-                                if (selectedCustomer.points >= 100) {
-                                    if(window.confirm(`Resgatar prêmio para ${selectedCustomer.name}? Isso vai descontar 100 pontos.`)) {
+                                if (rewardsAvailable > 0) {
+                                    if(window.confirm(`CONFIRMAR RESGATE?\n\nIsso vai descontar 100 pontos do saldo de ${selectedCustomer.name}.\nEntregue o brinde agora.`)) {
                                         onRedeemReward(selectedCustomer.id, 100);
                                     }
                                 } else {
-                                    alert("Pontos insuficientes para resgate (Min: 100)");
+                                    alert(`Faltam ${missingPoints} pontos para liberar o resgate!`);
                                 }
                             }}
-                            className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${selectedCustomer.points >= 100 ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
+                            disabled={rewardsAvailable === 0}
+                            className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${rewardsAvailable > 0 ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] transform hover:scale-[1.02]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-700'}`}
                         >
-                            <Gift size={20} /> Resgatar Prêmio (100 pts)
+                            <Gift size={20} className={rewardsAvailable > 0 ? "animate-bounce" : ""} /> 
+                            {rewardsAvailable > 0 ? "RESGATAR PRÊMIO (-100)" : "SALDO INSUFICIENTE"}
                         </button>
                         
-                        {/* Botão de Ajuste Manual (Só para Admin em tese, mas deixei aberto por enquanto) */}
+                        {/* Correção de Saldo (Para arrumar o -140 se precisar) */}
+                        {selectedCustomer.points < 0 && (
+                             <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-xl flex items-center gap-2 text-red-400 text-xs">
+                                 <AlertCircle size={16} /> 
+                                 <span>Erro: Saldo negativo detectado.</span>
+                                 <button onClick={() => onManualAddPoints(selectedCustomer.id, Math.abs(selectedCustomer.points))} className="underline hover:text-white ml-auto">Zerar</button>
+                             </div>
+                        )}
+
                         <button 
                             onClick={() => {
-                                const pts = prompt("Quantos pontos adicionar manualmente?");
-                                if (pts) onManualAddPoints(selectedCustomer.id, parseInt(pts));
+                                const pts = prompt("Adicionar pontos (Use número negativo para corrigir erros):");
+                                if (pts && !isNaN(parseInt(pts))) onManualAddPoints(selectedCustomer.id, parseInt(pts));
                             }}
-                            className="w-full py-3 bg-zinc-800 text-zinc-300 rounded-xl font-bold hover:bg-zinc-700 flex items-center justify-center gap-2"
+                            className="w-full py-3 bg-zinc-950 border border-zinc-800 text-zinc-400 rounded-xl font-bold hover:bg-zinc-900 hover:text-white flex items-center justify-center gap-2 transition-colors text-xs uppercase tracking-wider"
                         >
-                            <Plus size={20} /> Adicionar Manual
+                            <Plus size={16} /> Ajuste Manual
                         </button>
                     </div>
                 </div>
