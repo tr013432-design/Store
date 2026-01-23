@@ -1,8 +1,9 @@
+// 1. CATEGORIAS ATUALIZADAS (Sem Comida, focadas nos seus produtos)
 export enum Category {
-  FOOD = 'Comida',
-  DRINK = 'Bebida',
-  BOOKSTORE = 'Livraria',
-  CLOTHING = 'Vestuário',
+  BOOKS_BIBLES = 'Livros e Bíblias',
+  CLOTHING = 'Vestuário (Camisas/Bonés)',
+  STATIONERY = 'Papelaria (Planner/Caneta/Blocos)',
+  ACCESSORIES = 'Acessórios (Garrafas/Botons/Mochilas)',
   OTHER = 'Outros',
 }
 
@@ -19,6 +20,21 @@ export interface Product {
 
 export interface CartItem extends Product {
   quantity: number;
+}
+
+// 2. NOVO TIPO: CLIENTE (Para o Sara Points)
+export interface Customer {
+  id: string; // Telefone (WhatsApp)
+  name: string;
+  points: number;
+  totalSpent: number;
+  lastPurchase: string;
+  history: {
+    date: string;
+    description: string;
+    value: number;
+    pointsEarned: number;
+  }[];
 }
 
 export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix';
@@ -82,7 +98,6 @@ export interface Transaction {
   items: CartItem[];
   total: number;
   paymentMethod: PaymentMethod;
-  // --- CORREÇÃO: Campos adicionados para o Dashboard identificar o voluntário ---
   volunteerName?: string;
   serviceType?: string;
 }
