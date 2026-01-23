@@ -8,8 +8,8 @@ import { Orders } from './components/Orders';
 import { Inventory } from './components/Inventory';
 import { Settings } from './components/Settings'; 
 import { Deliveries } from './components/Deliveries';
-import { Loyalty } from './components/Loyalty'; // <--- IMPORT NOVO
-import { useLocalStorage } from './hooks/useLocalStorage'; // <--- USAR HOOK DE MEMÓRIA PARA O APP TODO
+import { Loyalty } from './components/Loyalty';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star } from 'lucide-react';
 
 enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY }
@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>('db_transactions', MOCK_TRANSACTIONS as any);
   const [reports, setReports] = useLocalStorage<DailyReport[]>('db_reports', []);
   const [orders, setOrders] = useLocalStorage<OrderSheet[]>('db_orders', []); 
-  const [customers, setCustomers] = useLocalStorage<Customer[]>('db_customers', []); // <--- BANCO DE CLIENTES
+  const [customers, setCustomers] = useLocalStorage<Customer[]>('db_customers', []); 
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -106,7 +106,7 @@ const App: React.FC = () => {
             orderSheet.items.forEach(item => {
                 const phone = item.customerPhone.replace(/\D/g, ''); // Usa apenas números como ID
                 const name = item.customerName;
-                const pointsEarned = Math.floor(item.total); // 1 Ponto por Real gasto (Arredondado)
+                const pointsEarned = Math.floor(item.total); // 1 Ponto por Real gasto
 
                 const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
 
@@ -145,8 +145,6 @@ const App: React.FC = () => {
   const handleUnvalidateOrder = (orderId: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PENDENTE', validatedBy: undefined } : o));
     setTransactions(prev => prev.filter(t => t.id !== `tx-ord-${orderId}`));
-    // Nota: Reverter pontos é complexo, por simplicidade não removemos os pontos ao desvalidar,
-    // mas em um sistema real deveríamos.
   };
 
   const handleMarkItemDelivered = (orderId: string, itemId: string) => {
@@ -164,12 +162,22 @@ const App: React.FC = () => {
       alert("Pontos adicionados manualmente!");
   };
 
+  // --- CORREÇÃO AQUI: IMPEDE SALDO NEGATIVO ---
   const handleRedeemReward = (phone: string, cost: number) => {
+      // 1. Verifica se o cliente tem saldo ANTES de atualizar
+      const customer = customers.find(c => c.id === phone);
+      if (customer && customer.points < cost) {
+          alert("❌ Erro: Saldo insuficiente para resgatar este prêmio.");
+          return;
+      }
+
+      // 2. Se tiver saldo, desconta
       setCustomers(prev => prev.map(c => c.id === phone ? { 
           ...c, 
           points: c.points - cost,
           history: [...c.history, { date: new Date().toISOString(), description: "Resgate de Prêmio 🎁", value: 0, pointsEarned: -cost }]
       } : c));
+      
       alert("Prêmio resgatado com sucesso! Entregue o brinde ao cliente.");
   };
 
@@ -205,7 +213,7 @@ const App: React.FC = () => {
           <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" badge={pendingCount} />
           <NavItem view={View.DELIVERIES} icon={Truck} label="Entregas" badge={pendingDeliveries} />
           <div className="my-4 border-t border-zinc-800 shrink-0"></div>
-          <NavItem view={View.LOYALTY} icon={Star} label="Sara Points" /> {/* NOVO MENU */}
+          <NavItem view={View.LOYALTY} icon={Star} label="Sara Points" />
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
           <div className="mt-auto pt-4 shrink-0"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
         </nav>
