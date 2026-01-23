@@ -28,7 +28,7 @@ export interface ReportItem {
   quantity: number;
   total: number;
   paymentMethod: PaymentMethod;
-  checked?: boolean; // Para checklist na validação
+  checked?: boolean;
 }
 
 export interface DailyReport {
@@ -40,7 +40,7 @@ export interface DailyReport {
   items: ReportItem[];
   notes: string;
   status: 'PENDENTE' | 'VALIDADO';
-  validatedBy?: string; // Nome do Admin que validou
+  validatedBy?: string;
   totalCash: number;
   totalPix: number;
   totalDebit: number;
@@ -57,8 +57,8 @@ export interface OrderItem {
   customerName: string;
   customerTeam: string;
   customerPhone: string;
-  checked?: boolean; // Para checklist na validação
-  delivered?: boolean; // <--- NOVO: Para controle de entrega logística
+  checked?: boolean;
+  delivered?: boolean;
 }
 
 export interface OrderSheet {
@@ -67,8 +67,8 @@ export interface OrderSheet {
   serviceType: string;
   date: string;
   items: OrderItem[];
-  status: 'PENDENTE' | 'ENTREGUE'; // "ENTREGUE" aqui é status financeiro (Validado)
-  validatedBy?: string; // Nome do Admin que validou
+  status: 'PENDENTE' | 'ENTREGUE';
+  validatedBy?: string;
   totalCash: number;
   totalPix: number;
   totalDebit: number;
@@ -82,6 +82,9 @@ export interface Transaction {
   items: CartItem[];
   total: number;
   paymentMethod: PaymentMethod;
+  // --- CORREÇÃO: Campos adicionados para o Dashboard identificar o voluntário ---
+  volunteerName?: string;
+  serviceType?: string;
 }
 
 export interface AdminUser {
