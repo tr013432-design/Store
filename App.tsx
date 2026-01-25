@@ -9,15 +9,16 @@ import { Inventory } from './components/Inventory';
 import { Settings } from './components/Settings'; 
 import { Deliveries } from './components/Deliveries';
 import { Loyalty } from './components/Loyalty';
+import { Customers } from './components/Customers'; // <--- IMPORT NOVO
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star } from 'lucide-react';
+import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users } from 'lucide-react';
 
-enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY }
+// Adicionei CUSTOMERS no enum
+enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY, CUSTOMERS }
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   
-  // USANDO LOCAL STORAGE PARA PERSISTIR DADOS GLOBAIS
   const [products, setProducts] = useLocalStorage<Product[]>('db_products', MOCK_PRODUCTS);
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>('db_transactions', MOCK_TRANSACTIONS as any);
   const [reports, setReports] = useLocalStorage<DailyReport[]>('db_reports', []);
@@ -25,8 +26,6 @@ const App: React.FC = () => {
   const [customers, setCustomers] = useLocalStorage<Customer[]>('db_customers', []); 
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Estados de Segurança e Configurações
   const [isDashboardUnlocked, setIsDashboardUnlocked] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
@@ -34,7 +33,6 @@ const App: React.FC = () => {
   const [availableServices, setAvailableServices] = useLocalStorage<string[]>('cfg_services', ['Culto da Família', 'Culto Profético', 'Arena', 'Culto de Fé e Milagres']);
   const [admins, setAdmins] = useLocalStorage<AdminUser[]>('cfg_admins', [{ id: '1', name: 'Admin', email: 'admin@sara.com', password: '123' }]);
 
-  // Funções de Gerenciamento (Helpers)
   const addVolunteer = (name: string) => setAvailableVolunteers(prev => [...prev, name]);
   const removeVolunteer = (name: string) => setAvailableVolunteers(prev => prev.filter(v => v !== name));
   const addService = (service: string) => setAvailableServices(prev => [...prev, service]);
@@ -42,14 +40,12 @@ const App: React.FC = () => {
   const addAdmin = (newAdmin: Omit<AdminUser, 'id'>) => setAdmins(prev => [...prev, { ...newAdmin, id: Date.now().toString() }]);
   const removeAdmin = (id: string) => setAdmins(prev => prev.filter(a => a.id !== id));
 
-  // Lógica de Login
   const handleDashboardLogin = () => {
     const admin = admins.find(a => a.email === loginEmail && a.password === loginPass);
     if (admin) { setIsDashboardUnlocked(true); setLoginEmail(''); setLoginPass(''); } else { alert("🚫 Acesso Negado!"); }
   };
   const handleLockDashboard = () => setIsDashboardUnlocked(false);
 
-  // Lógica de Negócios (Relatórios e Vendas)
   const handleReportSubmit = (newReportData: Omit<DailyReport, 'id' | 'status'>) => { setReports(prev => [{ ...newReportData, id: `rep-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
   const handleOrderSubmit = (newOrderData: Omit<OrderSheet, 'id' | 'status'>) => { setOrders(prev => [{ ...newOrderData, id: `ord-${Date.now()}`, status: 'PENDENTE' }, ...prev]); };
   
@@ -60,17 +56,55 @@ const App: React.FC = () => {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'VALIDADO', validatedBy: adminName } : r));
     const report = reports.find(r => r.id === reportId);
     if (report) {
-        const newTrans: Transaction = { 
-            id: `tx-rep-${report.id}`, 
-            date: report.date, 
-            items: report.items.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), 
-            total: report.grandTotal, 
-            paymentMethod: 'Dinheiro', 
-            volunteerName: report.volunteerName, 
-            serviceType: report.serviceType 
-        };
-        setTransactions(prev => [newTrans, ...prev]);
+        const itemsForTransaction = report.items.filter(i => i.paymentMethod !== 'Sara Points');
+        if (itemsForTransaction.length > 0) {
+            const newTrans: Transaction = { 
+                id: `tx-rep-${report.id}`, 
+                date: report.date, 
+                items: itemsForTransaction.map(i => ({ id: i.productName, name: i.productName, price: i.total / i.quantity, category: 'Outros' as any, stock: 0, quantity: i.quantity })), 
+                total: itemsForTransaction.reduce((acc, item) => acc + item.total, 0), 
+                paymentMethod: 'Dinheiro', 
+                volunteerName: report.volunteerName, 
+                serviceType: report.serviceType 
+            };
+            setTransactions(prev => [newTrans, ...prev]);
+        }
         setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
+        
+        // Atualiza Sara Points
+        setCustomers(prevCustomers => {
+            let updatedCustomers = [...prevCustomers];
+            report.items.forEach(item => {
+                if (item.customerPhone) {
+                    const phone = item.customerPhone.replace(/\D/g, '');
+                    const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
+                    const pointsChange = item.paymentMethod === 'Sara Points' ? -Math.floor(item.total) : Math.floor(item.total);
+                    const description = item.paymentMethod === 'Sara Points' ? `Resgate: ${item.productName}` : `Compra: ${item.productName}`;
+
+                    if (existingIndex >= 0) {
+                        const current = updatedCustomers[existingIndex];
+                        updatedCustomers[existingIndex] = {
+                            ...current,
+                            points: current.points + pointsChange,
+                            totalSpent: item.paymentMethod !== 'Sara Points' ? current.totalSpent + item.total : current.totalSpent,
+                            lastPurchase: new Date().toISOString(),
+                            history: [...current.history, { date: new Date().toISOString(), description, value: item.total, pointsEarned: pointsChange }]
+                        };
+                    } else if (pointsChange > 0) {
+                        updatedCustomers.push({
+                            id: phone,
+                            name: `Cliente ${phone.slice(-4)}`, 
+                            phone: item.customerPhone, // Salva o telefone formatado
+                            points: pointsChange,
+                            totalSpent: item.total,
+                            lastPurchase: new Date().toISOString(),
+                            history: [{ date: new Date().toISOString(), description, value: item.total, pointsEarned: pointsChange }]
+                        });
+                    }
+                }
+            });
+            return updatedCustomers;
+        });
     }
   };
 
@@ -81,13 +115,10 @@ const App: React.FC = () => {
     if (report) { setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock + itemSold.quantity } : prod; })); }
   };
 
-  // --- LÓGICA DE PONTOS SARA POINTS NA VALIDAÇÃO DE ENCOMENDA ---
   const handleValidateOrder = (orderId: string, adminName: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ENTREGUE', validatedBy: adminName } : o));
     const orderSheet = orders.find(o => o.id === orderId);
-    
     if (orderSheet) {
-        // 1. Cria Transação Financeira
         const newTrans: Transaction = { 
             id: `tx-ord-${orderSheet.id}`, 
             date: orderSheet.date,
@@ -99,47 +130,39 @@ const App: React.FC = () => {
         };
         setTransactions(prev => [newTrans, ...prev]);
 
-        // 2. ATUALIZA SARA POINTS DOS CLIENTES
         setCustomers(prevCustomers => {
             let updatedCustomers = [...prevCustomers];
-            
             orderSheet.items.forEach(item => {
-                const phone = item.customerPhone.replace(/\D/g, ''); // Usa apenas números como ID
+                const phone = item.customerPhone.replace(/\D/g, ''); 
                 const name = item.customerName;
-                const pointsEarned = Math.floor(item.total); // 1 Ponto por Real gasto
-
+                const pointsEarned = Math.floor(item.total); 
                 const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
 
                 if (existingIndex >= 0) {
-                    // Cliente já existe: atualiza
                     updatedCustomers[existingIndex] = {
                         ...updatedCustomers[existingIndex],
                         points: updatedCustomers[existingIndex].points + pointsEarned,
                         totalSpent: updatedCustomers[existingIndex].totalSpent + item.total,
                         lastPurchase: new Date().toISOString(),
-                        history: [
-                            ...updatedCustomers[existingIndex].history,
-                            { date: new Date().toISOString(), description: `Compra: ${item.productName}`, value: item.total, pointsEarned }
-                        ]
+                        history: [...updatedCustomers[existingIndex].history, { date: new Date().toISOString(), description: `Compra: ${item.productName}`, value: item.total, pointsEarned }]
                     };
                 } else {
-                    // Cliente novo: cria
                     updatedCustomers.push({
                         id: phone,
                         name: name,
+                        phone: item.customerPhone, // Salva o formatado
+                        team: item.customerTeam,   // Salva a equipe se tiver vindo da encomenda
                         points: pointsEarned,
                         totalSpent: item.total,
                         lastPurchase: new Date().toISOString(),
-                        history: [
-                            { date: new Date().toISOString(), description: `Primeira Compra: ${item.productName}`, value: item.total, pointsEarned }
-                        ]
+                        history: [{ date: new Date().toISOString(), description: `Primeira Compra: ${item.productName}`, value: item.total, pointsEarned }]
                     });
                 }
             });
             return updatedCustomers;
         });
     }
-    alert("Encomenda validada! Pontos adicionados aos clientes.");
+    alert("Encomenda validada! Pontos adicionados.");
   };
 
   const handleUnvalidateOrder = (orderId: string) => {
@@ -149,37 +172,42 @@ const App: React.FC = () => {
 
   const handleMarkItemDelivered = (orderId: string, itemId: string) => {
     setOrders(prev => prev.map(order => {
-        if (order.id === orderId) {
-            return { ...order, items: order.items.map(item => item.id === itemId ? { ...item, delivered: true } : item) };
-        }
+        if (order.id === orderId) { return { ...order, items: order.items.map(item => item.id === itemId ? { ...item, delivered: true } : item) }; }
         return order;
     }));
   };
 
-  // --- FUNÇÕES DE FIDELIDADE (MANUAL) ---
   const handleManualAddPoints = (phone: string, points: number) => {
       setCustomers(prev => prev.map(c => c.id === phone ? { ...c, points: c.points + points } : c));
       alert("Pontos adicionados manualmente!");
   };
 
-  // --- CORREÇÃO AQUI: IMPEDE SALDO NEGATIVO ---
   const handleRedeemReward = (phone: string, cost: number) => {
-      // 1. Verifica se o cliente tem saldo ANTES de atualizar
       const customer = customers.find(c => c.id === phone);
-      if (customer && customer.points < cost) {
-          alert("❌ Erro: Saldo insuficiente para resgatar este prêmio.");
-          return;
-      }
-
-      // 2. Se tiver saldo, desconta
+      if (customer && customer.points < cost) { alert("❌ Erro: Saldo insuficiente."); return; }
       setCustomers(prev => prev.map(c => c.id === phone ? { 
-          ...c, 
-          points: c.points - cost,
+          ...c, points: c.points - cost,
           history: [...c.history, { date: new Date().toISOString(), description: "Resgate de Prêmio 🎁", value: 0, pointsEarned: -cost }]
       } : c));
-      
-      alert("Prêmio resgatado com sucesso! Entregue o brinde ao cliente.");
+      alert("Prêmio resgatado com sucesso!");
   };
+
+  // --- FUNÇÃO PARA SALVAR CLIENTE NA NOVA ABA ---
+  const handleSaveCustomer = (newCustomer: Customer) => {
+      setCustomers(prev => {
+          const exists = prev.find(c => c.id === newCustomer.id);
+          if (exists) {
+              // Atualiza
+              return prev.map(c => c.id === newCustomer.id ? { ...c, ...newCustomer, points: c.points, totalSpent: c.totalSpent, history: c.history } : c);
+          } else {
+              // Cria novo
+              return [...prev, newCustomer];
+          }
+      });
+      alert("Cliente salvo com sucesso!");
+  };
+
+  const handleDeleteCustomer = (id: string) => setCustomers(prev => prev.filter(c => c.id !== id));
 
   const handleUpdateProduct = (updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
   const handleAddProduct = (newProduct: Product) => setProducts(prev => [...prev, newProduct]);
@@ -197,7 +225,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-black flex font-sans text-zinc-100">
       
-      {/* SIDEBAR */}
       <aside className="hidden lg:flex flex-col w-72 bg-zinc-900 border-r border-zinc-800 p-6 fixed h-full z-10">
         <div className="flex flex-col items-center mb-6 w-full">
             <div className="w-56 h-56 flex items-center justify-center relative">
@@ -213,13 +240,13 @@ const App: React.FC = () => {
           <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação Pastoral" badge={pendingCount} />
           <NavItem view={View.DELIVERIES} icon={Truck} label="Entregas" badge={pendingDeliveries} />
           <div className="my-4 border-t border-zinc-800 shrink-0"></div>
+          <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" /> {/* NOVO */}
           <NavItem view={View.LOYALTY} icon={Star} label="Sara Points" />
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
           <div className="mt-auto pt-4 shrink-0"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
         </nav>
       </aside>
 
-      {/* MOBILE HEADER */}
       <div className="lg:hidden fixed top-0 w-full bg-zinc-900 z-20 border-b border-zinc-800 px-6 py-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3"><img src="/logo.png" className="w-10 h-10 rounded-full border border-green-500" /><span className="font-bold text-lg text-green-500 tracking-widest">SARA STORE</span></div>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-zinc-400"><Menu size={24} /></button>
@@ -234,6 +261,7 @@ const App: React.FC = () => {
               <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
               <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validação" badge={pendingCount} />
               <NavItem view={View.DELIVERIES} icon={Truck} label="Entregas" badge={pendingDeliveries} />
+              <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
               <NavItem view={View.LOYALTY} icon={Star} label="Sara Points" />
               <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
               <div className="border-t border-zinc-800 my-2 pt-2"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
@@ -242,10 +270,8 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 lg:ml-72 p-4 lg:p-8 pt-24 lg:pt-8 transition-all bg-black min-h-screen">
         <div className="max-w-7xl mx-auto">
-          
           {currentView === View.DASHBOARD && (
             !isDashboardUnlocked ? (
                 <div className="flex flex-col items-center justify-center h-[80vh] animate-fade-in">
@@ -269,10 +295,11 @@ const App: React.FC = () => {
             )
           )}
 
-          {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
+          {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} customers={customers} />}
           {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
           {currentView === View.VALIDATION && <ReportValidation reports={reports} orders={orders} admins={admins} onValidateReport={handleValidateReport} onValidateOrder={handleValidateOrder} onUnvalidateReport={handleUnvalidateReport} onUnvalidateOrder={handleUnvalidateOrder} onToggleReportItem={handleToggleReportItem} onToggleOrderItem={handleToggleOrderItem} />}
           {currentView === View.DELIVERIES && <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />}
+          {currentView === View.CUSTOMERS && <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />}
           {currentView === View.LOYALTY && <Loyalty customers={customers} onManualAddPoints={handleManualAddPoints} onRedeemReward={handleRedeemReward} />}
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
           {currentView === View.SETTINGS && <Settings volunteers={availableVolunteers} services={availableServices} admins={admins} onAddVolunteer={addVolunteer} onRemoveVolunteer={removeVolunteer} onAddService={addService} onRemoveService={removeService} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} />}
