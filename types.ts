@@ -1,4 +1,6 @@
-// 1. CATEGORIAS ATUALIZADAS (Sem Comida, focadas nos seus produtos)
+// src/types.ts
+
+// 1. CATEGORIAS (Focadas nos produtos da Sara Store)
 export enum Category {
   BOOKS_BIBLES = 'Livros e Bíblias',
   CLOTHING = 'Vestuário (Camisas/Bonés)',
@@ -11,7 +13,7 @@ export interface Product {
   id: string;
   name: string;
   price: number;
-  costPrice?: number;
+  costPrice?: number; // Essencial para o cálculo de Lucro Real
   category: Category;
   stock: number;
   imageUrl?: string;
@@ -22,13 +24,13 @@ export interface CartItem extends Product {
   quantity: number;
 }
 
-// 2. NOVO TIPO: CLIENTE (Para o Sara Points)
+// 2. CLIENTE (Completo com Equipe e Igreja)
 export interface Customer {
-  id: string; // Telefone (WhatsApp) é o ID
+  id: string; // ID é o telefone (apenas números)
   name: string;
-  phone: string; // Vamos salvar o telefone formatado também
-  team?: string;   // <--- NOVO: Equipe
-  church?: string; // <--- NOVO: Igreja
+  phone: string; // Telefone formatado (visual)
+  team?: string;   // Equipe
+  church?: string; // Igreja
   points: number;
   totalSpent: number;
   lastPurchase: string;
@@ -40,7 +42,8 @@ export interface Customer {
   }[];
 }
 
-export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix';
+// 3. PAGAMENTOS (Incluindo Sara Points)
+export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix' | 'Sara Points';
 
 export interface ReportItem {
   productName: string;
@@ -48,6 +51,7 @@ export interface ReportItem {
   total: number;
   paymentMethod: PaymentMethod;
   checked?: boolean;
+  customerPhone?: string; // Essencial para pontuar direto no relatório
 }
 
 export interface DailyReport {
@@ -101,6 +105,7 @@ export interface Transaction {
   items: CartItem[];
   total: number;
   paymentMethod: PaymentMethod;
+  // Campos vitais para o Dashboard e Gamificação
   volunteerName?: string;
   serviceType?: string;
 }
