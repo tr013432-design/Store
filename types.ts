@@ -24,8 +24,11 @@ export interface CartItem extends Product {
 
 // 2. NOVO TIPO: CLIENTE (Para o Sara Points)
 export interface Customer {
-  id: string; // Telefone (WhatsApp)
+  id: string; // Telefone (WhatsApp) é o ID
   name: string;
+  phone: string; // Vamos salvar o telefone formatado também
+  team?: string;   // <--- NOVO: Equipe
+  church?: string; // <--- NOVO: Igreja
   points: number;
   totalSpent: number;
   lastPurchase: string;
