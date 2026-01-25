@@ -9,7 +9,7 @@ import { Inventory } from './components/Inventory';
 import { Settings } from './components/Settings'; 
 import { Deliveries } from './components/Deliveries';
 import { Loyalty } from './components/Loyalty';
-import { Customers } from './components/Customers'; // <--- GARANTA QUE ESTÁ IMPORTADO
+import { Customers } from './components/Customers';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users } from 'lucide-react';
 
@@ -24,14 +24,17 @@ const App: React.FC = () => {
   const [orders, setOrders] = useLocalStorage<OrderSheet[]>('db_orders', []); 
   const [customers, setCustomers] = useLocalStorage<Customer[]>('db_customers', []); 
 
-  // Configuração de Pontos por Categoria
+  // --- CONFIGURAÇÃO: Pontos por Categoria (Padrões Iniciais) ---
   const [pointsConfig, setPointsConfig] = useLocalStorage<Record<string, number>>('cfg_points_rules', {
-      [Category.BOOKS_BIBLES]: 15,
-      [Category.CLOTHING]: 30,
-      [Category.STATIONERY]: 5,
-      [Category.ACCESSORIES]: 5,
-      [Category.OTHER]: 1
+      [Category.BOOKS_BIBLES || 'Livros e Bíblias']: 15,
+      [Category.CLOTHING || 'Vestuário']: 30,
+      [Category.STATIONERY || 'Papelaria']: 5,
+      [Category.ACCESSORIES || 'Acessórios']: 5,
+      [Category.OTHER || 'Outros']: 1
   });
+
+  // --- CONFIGURAÇÃO: Valor do Ponto em Reais (Padrão: R$ 0.10) ---
+  const [pointsValue, setPointsValue] = useLocalStorage<number>('cfg_points_value', 0.10);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDashboardUnlocked, setIsDashboardUnlocked] = useState(false);
@@ -75,6 +78,39 @@ const App: React.FC = () => {
             setTransactions(prev => [newTrans, ...prev]);
         }
         setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
+        
+        // Atualização de pontos no relatório (Simplificada)
+        setCustomers(prevCustomers => {
+            let updatedCustomers = [...prevCustomers];
+            report.items.forEach(item => {
+                if (item.customerPhone) {
+                    const phone = item.customerPhone.replace(/\D/g, '');
+                    const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
+                    // No relatório não temos a categoria fácil, então usamos padrão ou 1:1. 
+                    // Se quiser precisão, teria que buscar o produto na lista 'products' igual na Encomenda.
+                    // Vamos fazer a busca para garantir a regra da categoria:
+                    const originalProduct = products.find(p => p.name === item.productName);
+                    const category = originalProduct?.category || Category.OTHER;
+                    const config = pointsConfig || {};
+                    const pointsPerUnit = config[category] || 1;
+
+                    // Se pagou com dinheiro, ganha pontos. Se pagou com pontos, perde.
+                    const pointsChange = item.paymentMethod === 'Sara Points' 
+                        ? -Math.floor(item.total) // Desconta valor (como se fosse dinheiro) ou pontos fixos? Assumindo valor.
+                        : (item.quantity * pointsPerUnit);
+
+                    const description = item.paymentMethod === 'Sara Points' ? `Resgate: ${item.productName}` : `Compra: ${item.productName}`;
+
+                    if (existingIndex >= 0) {
+                        const current = updatedCustomers[existingIndex];
+                        updatedCustomers[existingIndex] = { ...current, points: current.points + pointsChange, totalSpent: item.paymentMethod !== 'Sara Points' ? current.totalSpent + item.total : current.totalSpent, lastPurchase: new Date().toISOString(), history: [...current.history, { date: new Date().toISOString(), description, value: item.total, pointsEarned: pointsChange }] };
+                    } else if (pointsChange > 0) {
+                        updatedCustomers.push({ id: phone, name: `Cliente ${phone.slice(-4)}`, phone: item.customerPhone, points: pointsChange, totalSpent: item.total, lastPurchase: new Date().toISOString(), history: [{ date: new Date().toISOString(), description, value: item.total, pointsEarned: pointsChange }] });
+                    }
+                }
+            });
+            return updatedCustomers;
+        });
     }
   };
 
@@ -96,7 +132,6 @@ const App: React.FC = () => {
         };
         setTransactions(prev => [newTrans, ...prev]);
 
-        // ATUALIZA PONTOS
         setCustomers(prevCustomers => {
             let updatedCustomers = [...prevCustomers];
             orderSheet.items.forEach(item => {
@@ -105,7 +140,9 @@ const App: React.FC = () => {
                 
                 const originalProduct = products.find(p => p.name === item.productName);
                 const category = originalProduct?.category || Category.OTHER;
-                const pointsPerUnit = pointsConfig[category] || 1;
+                // PROTEÇÃO: Garante que pointsConfig existe antes de ler
+                const config = pointsConfig || {};
+                const pointsPerUnit = config[category] || 1;
                 const pointsEarned = item.quantity * pointsPerUnit;
 
                 const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
@@ -254,16 +291,14 @@ const App: React.FC = () => {
             )
           )}
 
-          {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} customers={customers} />}
+          {currentView === View.VOLUNTEER_REPORT && <VolunteerSales products={products} onSubmitReport={handleReportSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} customers={customers} pointsValue={pointsValue} />}
           {currentView === View.ORDERS && <Orders products={products} onSubmitOrders={handleOrderSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />}
           {currentView === View.VALIDATION && <ReportValidation reports={reports} orders={orders} admins={admins} onValidateReport={handleValidateReport} onValidateOrder={handleValidateOrder} onUnvalidateReport={handleUnvalidateReport} onUnvalidateOrder={handleUnvalidateOrder} onToggleReportItem={handleToggleReportItem} onToggleOrderItem={handleToggleOrderItem} />}
           {currentView === View.DELIVERIES && <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />}
           {currentView === View.CUSTOMERS && <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />}
-          
           {currentView === View.LOYALTY && <Loyalty customers={customers} pointsConfig={pointsConfig} onUpdatePointsConfig={setPointsConfig} onManualAddPoints={handleManualAddPoints} onRedeemReward={handleRedeemReward} />}
-          
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
-          {currentView === View.SETTINGS && <Settings volunteers={availableVolunteers} services={availableServices} admins={admins} onAddVolunteer={addVolunteer} onRemoveVolunteer={removeVolunteer} onAddService={addService} onRemoveService={removeService} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} />}
+          {currentView === View.SETTINGS && <Settings volunteers={availableVolunteers} services={availableServices} admins={admins} pointsConfig={pointsConfig} pointsValue={pointsValue} onUpdatePointsConfig={setPointsConfig} onUpdatePointsValue={setPointsValue} onAddVolunteer={addVolunteer} onRemoveVolunteer={removeVolunteer} onAddService={addService} onRemoveService={removeService} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} />}
         </div>
       </main>
     </div>
