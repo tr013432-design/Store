@@ -9,6 +9,7 @@ import { Inventory } from './components/Inventory';
 import { Settings } from './components/Settings'; 
 import { Deliveries } from './components/Deliveries';
 import { Loyalty } from './components/Loyalty';
+import { Customers } from './components/Customers'; // <--- GARANTA QUE ESTÁ IMPORTADO
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users } from 'lucide-react';
 
@@ -23,8 +24,7 @@ const App: React.FC = () => {
   const [orders, setOrders] = useLocalStorage<OrderSheet[]>('db_orders', []); 
   const [customers, setCustomers] = useLocalStorage<Customer[]>('db_customers', []); 
 
-  // --- NOVA CONFIGURAÇÃO DE PONTOS POR CATEGORIA ---
-  // Valor padrão: 1 ponto se não tiver configurado
+  // Configuração de Pontos por Categoria
   const [pointsConfig, setPointsConfig] = useLocalStorage<Record<string, number>>('cfg_points_rules', {
       [Category.BOOKS_BIBLES]: 15,
       [Category.CLOTHING]: 30,
@@ -75,17 +75,6 @@ const App: React.FC = () => {
             setTransactions(prev => [newTrans, ...prev]);
         }
         setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
-        
-        // Atualiza Sara Points (Versão Simples para Relatório - idealmente usaria a categoria tbm, mas aqui não temos o ID do produto fácil)
-        setCustomers(prevCustomers => {
-            let updatedCustomers = [...prevCustomers];
-            report.items.forEach(item => {
-                if (item.customerPhone) {
-                    // ... (Logica de relatório mantida simples ou pode ser atualizada se desejar)
-                }
-            });
-            return updatedCustomers;
-        });
     }
   };
 
@@ -107,24 +96,17 @@ const App: React.FC = () => {
         };
         setTransactions(prev => [newTrans, ...prev]);
 
-        // 2. ATUALIZA SARA POINTS COM BASE NA CATEGORIA
+        // ATUALIZA PONTOS
         setCustomers(prevCustomers => {
             let updatedCustomers = [...prevCustomers];
             orderSheet.items.forEach(item => {
                 const phone = item.customerPhone.replace(/\D/g, ''); 
                 const name = item.customerName;
                 
-                // --- NOVA LÓGICA DE PONTOS ---
-                // 1. Acha o produto original para saber a categoria
                 const originalProduct = products.find(p => p.name === item.productName);
                 const category = originalProduct?.category || Category.OTHER;
-                
-                // 2. Pega o valor da tabela de pontos (ou 1 se não tiver)
                 const pointsPerUnit = pointsConfig[category] || 1;
-                
-                // 3. Calcula: Quantidade * Pontos da Categoria
                 const pointsEarned = item.quantity * pointsPerUnit;
-                // -----------------------------
 
                 const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
 
@@ -278,7 +260,6 @@ const App: React.FC = () => {
           {currentView === View.DELIVERIES && <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />}
           {currentView === View.CUSTOMERS && <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />}
           
-          {/* AQUI ESTÁ A MUDANÇA: PASSAMOS AS CONFIGURAÇÕES PARA O COMPONENTE */}
           {currentView === View.LOYALTY && <Loyalty customers={customers} pointsConfig={pointsConfig} onUpdatePointsConfig={setPointsConfig} onManualAddPoints={handleManualAddPoints} onRedeemReward={handleRedeemReward} />}
           
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
