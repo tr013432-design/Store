@@ -116,3 +116,15 @@ export interface AdminUser {
   email: string;
   password: string;
 }
+
+// --- NOVO: GESTÃO DE DESPESAS E SANGRIA ---
+export type ExpenseType = 'DESPESA' | 'SANGRIA';
+
+export interface Expense {
+  id: string;
+  description: string; // Ex: "Sacolas", "Frete", "Material de Limpeza"
+  amount: number;      // Valor R$
+  type: ExpenseType;   // DESPESA (Gasto que reduz lucro) ou SANGRIA (Retirada de caixa)
+  date: string;        // Data ISO
+  user: string;        // Quem lançou (Admin/Voluntário)
+}
