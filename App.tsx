@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MOCK_PRODUCTS, MOCK_TRANSACTIONS } from './constants';
-import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Category } from './types';
+import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Category, Expense } from './types';
 import { Dashboard } from './components/Dashboard';
 import { VolunteerSales } from './components/VolunteerSales'; 
 import { ReportValidation } from './components/ReportValidation';
@@ -10,10 +10,11 @@ import { Settings } from './components/Settings';
 import { Deliveries } from './components/Deliveries';
 import { Loyalty } from './components/Loyalty';
 import { Customers } from './components/Customers';
+import { Expenses } from './components/Expenses'; // <--- IMPORT NOVO
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users } from 'lucide-react';
+import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users, TrendingDown } from 'lucide-react';
 
-enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY, CUSTOMERS }
+enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY, CUSTOMERS, EXPENSES } // <--- ADICIONE EXPENSES
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -23,17 +24,17 @@ const App: React.FC = () => {
   const [reports, setReports] = useLocalStorage<DailyReport[]>('db_reports', []);
   const [orders, setOrders] = useLocalStorage<OrderSheet[]>('db_orders', []); 
   const [customers, setCustomers] = useLocalStorage<Customer[]>('db_customers', []); 
+  const [expenses, setExpenses] = useLocalStorage<Expense[]>('db_expenses', []); // <--- NOVO: BANCO DE DESPESAS
 
-  // --- CONFIGURAÇÃO: Pontos por Categoria (Padrões Iniciais) ---
+  // --- CONFIGURAÇÃO DE PONTOS (CORRIGIDA) ---
   const [pointsConfig, setPointsConfig] = useLocalStorage<Record<string, number>>('cfg_points_rules', {
-      [Category.BOOKS_BIBLES || 'Livros e Bíblias']: 15,
-      [Category.CLOTHING || 'Vestuário']: 30,
-      [Category.STATIONERY || 'Papelaria']: 5,
-      [Category.ACCESSORIES || 'Acessórios']: 5,
-      [Category.OTHER || 'Outros']: 1
+      'Livros e Bíblias': 15,
+      'Vestuário': 30,
+      'Papelaria': 5,
+      'Acessórios': 5,
+      'Outros': 1
   });
 
-  // --- CONFIGURAÇÃO: Valor do Ponto em Reais (Padrão: R$ 0.10) ---
   const [pointsValue, setPointsValue] = useLocalStorage<number>('cfg_points_value', 0.10);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -50,6 +51,10 @@ const App: React.FC = () => {
   const removeService = (service: string) => setAvailableServices(prev => prev.filter(s => s !== service));
   const addAdmin = (newAdmin: Omit<AdminUser, 'id'>) => setAdmins(prev => [...prev, { ...newAdmin, id: Date.now().toString() }]);
   const removeAdmin = (id: string) => setAdmins(prev => prev.filter(a => a.id !== id));
+
+  // --- NOVA FUNÇÃO: ADICIONAR DESPESA ---
+  const handleAddExpense = (newExp: Expense) => setExpenses(prev => [newExp, ...prev]);
+  const handleDeleteExpense = (id: string) => setExpenses(prev => prev.filter(e => e.id !== id));
 
   const handleDashboardLogin = () => {
     const admin = admins.find(a => a.email === loginEmail && a.password === loginPass);
@@ -79,24 +84,20 @@ const App: React.FC = () => {
         }
         setProducts(prevProds => prevProds.map(prod => { const itemSold = report.items.find(i => i.productName === prod.name); return itemSold ? { ...prod, stock: prod.stock - itemSold.quantity } : prod; }));
         
-        // Atualização de pontos no relatório (Simplificada)
         setCustomers(prevCustomers => {
             let updatedCustomers = [...prevCustomers];
             report.items.forEach(item => {
                 if (item.customerPhone) {
                     const phone = item.customerPhone.replace(/\D/g, '');
                     const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
-                    // No relatório não temos a categoria fácil, então usamos padrão ou 1:1. 
-                    // Se quiser precisão, teria que buscar o produto na lista 'products' igual na Encomenda.
-                    // Vamos fazer a busca para garantir a regra da categoria:
+                    
                     const originalProduct = products.find(p => p.name === item.productName);
-                    const category = originalProduct?.category || Category.OTHER;
+                    const category = originalProduct?.category || 'Outros';
                     const config = pointsConfig || {};
-                    const pointsPerUnit = config[category] || 1;
+                    const pointsPerUnit = config[category] !== undefined ? config[category] : 1;
 
-                    // Se pagou com dinheiro, ganha pontos. Se pagou com pontos, perde.
                     const pointsChange = item.paymentMethod === 'Sara Points' 
-                        ? -Math.floor(item.total) // Desconta valor (como se fosse dinheiro) ou pontos fixos? Assumindo valor.
+                        ? -Math.floor(item.total) 
                         : (item.quantity * pointsPerUnit);
 
                     const description = item.paymentMethod === 'Sara Points' ? `Resgate: ${item.productName}` : `Compra: ${item.productName}`;
@@ -139,10 +140,9 @@ const App: React.FC = () => {
                 const name = item.customerName;
                 
                 const originalProduct = products.find(p => p.name === item.productName);
-                const category = originalProduct?.category || Category.OTHER;
-                // PROTEÇÃO: Garante que pointsConfig existe antes de ler
+                const category = originalProduct?.category || 'Outros';
                 const config = pointsConfig || {};
-                const pointsPerUnit = config[category] || 1;
+                const pointsPerUnit = config[category] !== undefined ? config[category] : 1;
                 const pointsEarned = item.quantity * pointsPerUnit;
 
                 const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
@@ -239,7 +239,8 @@ const App: React.FC = () => {
           <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
           <NavItem view={View.LOYALTY} icon={Star} label="Sara Points" />
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-          <div className="mt-auto pt-4 shrink-0"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
+          <div className="mt-auto pt-4 shrink-0"><NavItem view={View.EXPENSES} icon={TrendingDown} label="Saídas / Despesas" /></div>
+          <div className="pt-2"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
         </nav>
       </aside>
 
@@ -260,6 +261,7 @@ const App: React.FC = () => {
               <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
               <NavItem view={View.LOYALTY} icon={Star} label="Sara Points" />
               <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
+              <NavItem view={View.EXPENSES} icon={TrendingDown} label="Saídas / Despesas" />
               <div className="border-t border-zinc-800 my-2 pt-2"><NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" /></div>
             </nav>
           </div>
@@ -286,7 +288,7 @@ const App: React.FC = () => {
             ) : (
                 <div className="relative">
                     <button onClick={handleLockDashboard} className="absolute top-0 right-0 z-10 bg-zinc-900 border border-zinc-700 text-zinc-400 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-red-900/30 hover:text-red-500 flex items-center gap-2 transition-all"><LogOut size={14} /> Bloquear</button>
-                    <Dashboard transactions={transactions} products={products} />
+                    <Dashboard transactions={transactions} products={products} expenses={expenses} />
                 </div>
             )
           )}
@@ -296,8 +298,13 @@ const App: React.FC = () => {
           {currentView === View.VALIDATION && <ReportValidation reports={reports} orders={orders} admins={admins} onValidateReport={handleValidateReport} onValidateOrder={handleValidateOrder} onUnvalidateReport={handleUnvalidateReport} onUnvalidateOrder={handleUnvalidateOrder} onToggleReportItem={handleToggleReportItem} onToggleOrderItem={handleToggleOrderItem} />}
           {currentView === View.DELIVERIES && <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />}
           {currentView === View.CUSTOMERS && <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />}
+          
           {currentView === View.LOYALTY && <Loyalty customers={customers} pointsConfig={pointsConfig} onUpdatePointsConfig={setPointsConfig} onManualAddPoints={handleManualAddPoints} onRedeemReward={handleRedeemReward} />}
+          
           {currentView === View.INVENTORY && <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />}
+          
+          {currentView === View.EXPENSES && <Expenses expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense} currentUser="Admin" />}
+
           {currentView === View.SETTINGS && <Settings volunteers={availableVolunteers} services={availableServices} admins={admins} pointsConfig={pointsConfig} pointsValue={pointsValue} onUpdatePointsConfig={setPointsConfig} onUpdatePointsValue={setPointsValue} onAddVolunteer={addVolunteer} onRemoveVolunteer={removeVolunteer} onAddService={addService} onRemoveService={removeService} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} />}
         </div>
       </main>
