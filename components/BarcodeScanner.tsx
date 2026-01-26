@@ -1,66 +1,62 @@
-import React, { useState } from 'react';
-import { useZxing } from 'react-zxing';
-import { X, Camera } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Camera, ScanLine } from 'lucide-react';
 
-interface BarcodeScannerProps {
+// Se quiser usar câmera real no futuro, podemos instalar 'html5-qrcode'.
+// Por enquanto, vamos fazer um simulador de "Bip" via teclado (que é como leitores USB funcionam).
+
+interface ScannerProps {
   onScan: (code: string) => void;
   onClose: () => void;
 }
 
-export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose }) => {
-  const [error, setError] = useState('');
+export const BarcodeScanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
+  const [manualCode, setManualCode] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const { ref } = useZxing({
-    onDecodeResult(result) {
-      // Quando ler com sucesso:
-      const code = result.getText();
-      if (code) {
-        // Toca um "bip" de sucesso (opcional, mas legal)
-        navigator.vibrate?.(200); 
-        onScan(code);
-        onClose();
-      }
-    },
-    onError(err) {
-      // Ignora erros de "não encontrei código nesse frame" para não poluir
-      if (err.message.includes('No MultiFormat Readers')) return;
-      // setError('Ajuste a câmera...'); // Opcional
-    },
-    // Força a câmera traseira (environment)
-    constraints: { video: { facingMode: 'environment' } }
-  });
+  useEffect(() => {
+    // Foca no input assim que abre
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        if (manualCode.trim()) {
+            onScan(manualCode);
+            setManualCode('');
+        }
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
-      {/* Botão Fechar */}
-      <button 
-        onClick={onClose}
-        className="absolute top-4 right-4 text-white p-2 bg-zinc-800 rounded-full hover:bg-zinc-700"
-      >
-        <X size={24} />
-      </button>
+    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in">
+        <button onClick={onClose} className="absolute top-6 right-6 text-zinc-400 hover:text-white p-2">
+            <X size={32} />
+        </button>
 
-      <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-        <Camera className="text-green-500" /> Aponte para o código
-      </h3>
+        <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden">
+            {/* Efeito de Scanner */}
+            <div className="absolute top-0 left-0 w-full h-1 bg-green-500 shadow-[0_0_50px_rgba(34,197,94,0.5)] animate-[scan_2s_ease-in-out_infinite]"></div>
 
-      {/* Área da Câmera */}
-      <div className="relative w-full max-w-sm aspect-square bg-black rounded-2xl overflow-hidden border-2 border-zinc-700 shadow-2xl">
-        <video ref={ref} className="w-full h-full object-cover" />
-        
-        {/* Linha Vermelha de Mira */}
-        <div className="absolute top-1/2 left-0 w-full h-0.5 bg-red-500/80 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
-        <p className="absolute bottom-4 w-full text-center text-xs text-white/70">Mantenha o código no centro</p>
-      </div>
+            <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-6 border border-zinc-700">
+                <ScanLine size={32} className="text-green-500" />
+            </div>
 
-      {error && <p className="text-red-400 mt-4 text-sm">{error}</p>}
-      
-      <button 
-        onClick={onClose} 
-        className="mt-8 text-zinc-400 text-sm hover:text-white underline"
-      >
-        Cancelar
-      </button>
+            <h3 className="text-2xl font-bold text-white mb-2">Aguardando Leitura</h3>
+            <p className="text-sm text-zinc-500 mb-8">Aponte o leitor ou digite o código</p>
+
+            <div className="relative">
+                <input 
+                    ref={inputRef}
+                    value={manualCode}
+                    onChange={e => setManualCode(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Código de barras..." 
+                    className="w-full bg-black border border-zinc-700 rounded-xl py-4 px-4 text-center text-xl font-mono text-white tracking-widest focus:border-green-500 outline-none transition-all"
+                />
+            </div>
+            
+            <p className="text-[10px] text-zinc-600 mt-4 uppercase tracking-widest">Pressione Enter para confirmar</p>
+        </div>
     </div>
   );
 };
