@@ -1,29 +1,43 @@
 import { useState, useEffect } from "react";
 
-// Hook personalizado para salvar dados no navegador automaticamente
+// Hook para sincronizar o estado do React com o LocalStorage do navegador
 export function useLocalStorage<T>(key: string, initialValue: T) {
-  // 1. Ao iniciar, tenta buscar o que estava salvo no navegador
+  // Estado para armazenar o valor
+  // Passa uma função para o useState para que a lógica só execute uma vez
   const [storedValue, setStoredValue] = useState<T>(() => {
+    if (typeof window === "undefined") {
+      return initialValue;
+    }
     try {
-      // Pega o item pelo nome da chave (ex: 'draft_orders_list')
+      // Tenta pegar do local storage pela chave
       const item = window.localStorage.getItem(key);
-      // Se achar, converte de volta pra objeto/array. Se não, usa o valor inicial.
+      // Faz o parse do JSON ou retorna o valor inicial se não existir
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.error("Erro ao ler do localStorage:", error);
+      // Se der erro, retorna o valor inicial
+      console.log(error);
       return initialValue;
     }
   });
 
-  // 2. Sempre que a variável mudar, salva automaticamente no navegador
-  useEffect(() => {
+  // Função para atualizar o valor (como o setState normal)
+  const setValue = (value: T | ((val: T) => T)) => {
     try {
-      window.localStorage.setItem(key, JSON.stringify(storedValue));
+      // Permite que o valor seja uma função (para ter a mesma API do useState)
+      const valueToStore =
+        value instanceof Function ? value(storedValue) : value;
+      
+      // Salva o estado no React
+      setStoredValue(valueToStore);
+      
+      // Salva no local storage do navegador
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      }
     } catch (error) {
-      console.error("Erro ao salvar no localStorage:", error);
+      console.log(error);
     }
-  }, [key, storedValue]);
+  };
 
-  // Retorna igualzinho ao useState: o valor e a função de atualizar
-  return [storedValue, setStoredValue] as const;
+  return [storedValue, setValue] as const;
 }
