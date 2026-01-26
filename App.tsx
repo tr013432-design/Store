@@ -57,7 +57,7 @@ const App: React.FC = () => {
   };
   const handleLockDashboard = () => setIsDashboardUnlocked(false);
 
-  // --- Lógica de Negócios (Resumida para caber) ---
+  // --- Lógica de Negócios ---
   const handleReportSubmit = (d: any) => setReports(p => [{ ...d, id: `rep-${Date.now()}`, status: 'PENDENTE' }, ...p]);
   const handleOrderSubmit = (d: any) => setOrders(p => [{ ...d, id: `ord-${Date.now()}`, status: 'PENDENTE' }, ...p]);
   const handleToggleReportItem = (id: string, idx: number) => setReports(p => p.map(r => r.id === id ? { ...r, items: r.items.map((i, x) => x === idx ? { ...i, checked: !i.checked } : i) } : r));
@@ -70,13 +70,64 @@ const App: React.FC = () => {
         const items = rep.items.filter(i => i.paymentMethod !== 'Sara Points');
         if (items.length > 0) setTransactions(prev => [{ id: `tx-rep-${id}`, date: rep.date, items: items.map(i => ({ ...i, id: i.productName, name: i.productName, price: i.total/i.quantity, category: 'Outros' as any, stock: 0 })), total: items.reduce((a,b)=>a+b.total,0), paymentMethod: 'Dinheiro', volunteerName: rep.volunteerName, serviceType: rep.serviceType }, ...prev]);
         setProducts(prev => prev.map(p => { const sold = rep.items.find(i => i.productName === p.name); return sold ? { ...p, stock: p.stock - sold.quantity } : p; }));
-        // Pontos... (Lógica simplificada igual anterior)
+        
+        setCustomers(prevCustomers => {
+            let updatedCustomers = [...prevCustomers];
+            rep.items.forEach(item => {
+                if (item.customerPhone) {
+                    const phone = item.customerPhone.replace(/\D/g, '');
+                    const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
+                    const originalProduct = products.find(p => p.name === item.productName);
+                    const category = originalProduct?.category || 'Outros';
+                    const config = pointsConfig || {};
+                    const pointsPerUnit = config[category] !== undefined ? config[category] : 1;
+                    const pointsChange = item.paymentMethod === 'Sara Points' ? -Math.floor(item.total) : (item.quantity * pointsPerUnit);
+                    const description = item.paymentMethod === 'Sara Points' ? `Resgate: ${item.productName}` : `Compra: ${item.productName}`;
+
+                    if (existingIndex >= 0) {
+                        const current = updatedCustomers[existingIndex];
+                        updatedCustomers[existingIndex] = { ...current, points: current.points + pointsChange, totalSpent: item.paymentMethod !== 'Sara Points' ? current.totalSpent + item.total : current.totalSpent, lastPurchase: new Date().toISOString(), history: [...current.history, { date: new Date().toISOString(), description, value: item.total, pointsEarned: pointsChange }] };
+                    } else if (pointsChange > 0) {
+                        updatedCustomers.push({ id: phone, name: `Cliente ${phone.slice(-4)}`, phone: item.customerPhone, points: pointsChange, totalSpent: item.total, lastPurchase: new Date().toISOString(), history: [{ date: new Date().toISOString(), description, value: item.total, pointsEarned: pointsChange }] });
+                    }
+                }
+            });
+            return updatedCustomers;
+        });
     }
   };
-  // (Outras funções de validação mantidas iguais à versão anterior, apenas ocultadas aqui para focar no layout)
-  const handleValidateOrder = (id: string, admin: string) => { /* Lógica igual anterior */ setOrders(p => p.map(o => o.id === id ? { ...o, status: 'ENTREGUE', validatedBy: admin } : o)); /* ... resto ... */ };
-  const handleUnvalidateReport = (id: string) => { /* ... */ };
-  const handleUnvalidateOrder = (id: string) => { /* ... */ };
+
+  const handleValidateOrder = (id: string, admin: string) => {
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'ENTREGUE', validatedBy: admin } : o));
+    const order = orders.find(o => o.id === id);
+    if (order) {
+        setTransactions(prev => [{ id: `tx-ord-${id}`, date: order.date, items: order.items.map(i => ({ ...i, id: i.productName, name: i.productName, price: i.total/i.quantity, category: 'Outros' as any, stock: 0 })), total: order.grandTotal, paymentMethod: 'Dinheiro', volunteerName: order.volunteerName, serviceType: order.serviceType }, ...prev]);
+        setCustomers(prevCustomers => {
+            let updatedCustomers = [...prevCustomers];
+            order.items.forEach(item => {
+                const phone = item.customerPhone.replace(/\D/g, '');
+                const originalProduct = products.find(p => p.name === item.productName);
+                const category = originalProduct?.category || 'Outros';
+                const config = pointsConfig || {};
+                const pointsPerUnit = config[category] !== undefined ? config[category] : 1;
+                const pointsEarned = item.quantity * pointsPerUnit;
+                const existingIndex = updatedCustomers.findIndex(c => c.id === phone);
+
+                if (existingIndex >= 0) {
+                    const current = updatedCustomers[existingIndex];
+                    updatedCustomers[existingIndex] = { ...current, points: current.points + pointsEarned, totalSpent: current.totalSpent + item.total, lastPurchase: new Date().toISOString(), history: [...current.history, { date: new Date().toISOString(), description: `Compra: ${item.productName}`, value: item.total, pointsEarned }] };
+                } else {
+                    updatedCustomers.push({ id: phone, name: item.customerName, phone: item.customerPhone, points: pointsEarned, totalSpent: item.total, lastPurchase: new Date().toISOString(), history: [{ date: new Date().toISOString(), description: `Primeira Compra: ${item.productName}`, value: item.total, pointsEarned }] });
+                }
+            });
+            return updatedCustomers;
+        });
+    }
+    alert("Encomenda validada!");
+  };
+
+  const handleUnvalidateReport = (id: string) => { setReports(p => p.map(r => r.id === id ? { ...r, status: 'PENDENTE', validatedBy: undefined } : r)); setTransactions(p => p.filter(t => t.id !== `tx-rep-${id}`)); const rep = reports.find(r => r.id === id); if (rep) setProducts(p => p.map(prod => { const sold = rep.items.find(i => i.productName === prod.name); return sold ? { ...prod, stock: prod.stock + sold.quantity } : prod; })); };
+  const handleUnvalidateOrder = (id: string) => { setOrders(p => p.map(o => o.id === id ? { ...o, status: 'PENDENTE', validatedBy: undefined } : o)); setTransactions(p => p.filter(t => t.id !== `tx-ord-${id}`)); };
   const handleMarkItemDelivered = (oid: string, iid: string) => { setOrders(p => p.map(o => o.id === oid ? { ...o, items: o.items.map(i => i.id === iid ? { ...i, delivered: true } : i) } : o)); };
   
   // Funções de CRUD
@@ -136,13 +187,13 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-black flex font-sans text-zinc-100">
       {/* SIDEBAR DESKTOP */}
       <aside className="hidden lg:flex flex-col w-64 bg-zinc-950 border-r border-zinc-900 p-4 fixed h-full z-10">
-        <div className="flex flex-col items-center mb-8 mt-2">
-             <div className="w-12 h-12 bg-zinc-900 rounded-xl flex items-center justify-center border border-zinc-800 shadow-lg shadow-green-900/10 mb-3">
-                 <ShoppingBag className="text-green-500" size={24} />
-             </div>
-             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase text-center leading-none">SARA<span className="text-green-600">STORE</span></h1>
-             <p className="text-[9px] text-zinc-600 mt-1 uppercase tracking-wider">Gestão Freguesia</p>
+        
+        {/* --- LOGO ORIGINAL RESTAURADA AQUI --- */}
+        <div className="flex flex-col items-center mb-6 w-full animate-fade-in">
+            <img src="/logo.png" alt="Sara Store" className="w-28 h-28 object-contain drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
         </div>
+        {/* ---------------------------------- */}
+
         <div className="flex-1 overflow-y-auto custom-scrollbar">
             <SidebarContent />
         </div>
@@ -150,7 +201,7 @@ const App: React.FC = () => {
 
       {/* MOBILE HEADER */}
       <div className="lg:hidden fixed top-0 w-full bg-zinc-950 z-20 border-b border-zinc-900 px-6 py-4 flex justify-between items-center shadow-lg">
-        <div className="flex items-center gap-3"><div className="w-8 h-8 bg-zinc-900 rounded flex items-center justify-center border border-zinc-800"><ShoppingBag className="text-green-500" size={16} /></div><span className="font-bold text-sm tracking-widest text-white">SARA<span className="text-green-600">STORE</span></span></div>
+        <div className="flex items-center gap-3"><img src="/logo.png" className="w-8 h-8" alt="Logo" /><span className="font-bold text-sm tracking-widest text-white">SARA<span className="text-green-600">STORE</span></span></div>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-zinc-400"><Menu size={24} /></button>
       </div>
 
@@ -158,6 +209,7 @@ const App: React.FC = () => {
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-30 bg-black/80 backdrop-blur-md" onClick={() => setMobileMenuOpen(false)}>
           <div className="bg-zinc-950 w-3/4 h-full p-6 border-r border-zinc-900 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex flex-col items-center mb-6 w-full"><img src="/logo.png" alt="Sara Store" className="w-20 h-20 object-contain mb-2" /></div>
             <SidebarContent />
           </div>
         </div>
