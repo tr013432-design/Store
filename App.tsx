@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Product, PaymentMethod, DailyReport, ReportItem, CartItem, Customer } from '../types';
 import { Plus, Minus, Trash2, Search, Barcode, Save, FileText, User, Church, Calendar, Clock, ScanLine, Phone, Star, X, CheckCircle, CreditCard, DollarSign } from 'lucide-react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import { BarcodeScanner } from './BarcodeScanner';
 
 interface VolunteerSalesProps {
