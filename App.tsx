@@ -357,5 +357,6 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
 const PayBtn = ({ label, icon: Icon, onClick }: { label: string, icon: any, onClick: () => void }) => (
     <button onClick={onClick} className="bg-zinc-800 border border-zinc-700 py-3 rounded-xl text-xs font-bold text-zinc-300 hover:bg-green-600 hover:text-white hover:border-green-600 transition-all flex items-center justify-center gap-2 group">
         <Icon size={14} className="text-zinc-500 group-hover:text-white transition-colors" /> {label}
+      export default App;
     </button>
 );
