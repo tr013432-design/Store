@@ -12,16 +12,15 @@ import { Loyalty } from './components/Loyalty';
 import { Customers } from './components/Customers';
 import { Expenses } from './components/Expenses';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users, TrendingDown, Store, ChevronRight, MapPin, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Package, Menu, ClipboardList, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, Mail, Key, LogOut, Truck, Star, Users, TrendingDown, Store, ChevronRight, MapPin, ArrowLeft, Plus, X, Trash2 } from 'lucide-react';
 
-// --- CONFIGURAÇÃO DA REGIONAL ---
-const REGIONAL_UNITS = [
-    { id: 'freguesia', name: 'Freguesia', color: 'green' },
-    { id: 'barra', name: 'Barra da Tijuca', color: 'blue' },
-    { id: 'gardenia', name: 'Gardênia Azul', color: 'orange' },
-    { id: 'recreio', name: 'Recreio', color: 'purple' },
-    { id: 'taquara', name: 'Taquara', color: 'red' },
-];
+// --- TIPOS DA REGIONAL ---
+interface RegionalUnit {
+    id: string;
+    name: string;
+    color: string;
+    password: string; // Senha para acessar a unidade
+}
 
 enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY, CUSTOMERS, EXPENSES }
 
@@ -29,7 +28,7 @@ enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS
 const StoreSystem: React.FC<{ unitId: string, unitName: string, onLogoutUnit: () => void }> = ({ unitId, unitName, onLogoutUnit }) => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   
-  // O SEGREDO ESTÁ AQUI: O prefixo `unitId` separa os dados de cada igreja!
+  // O prefixo `unitId` separa os dados de cada igreja
   const [products, setProducts] = useLocalStorage<Product[]>(`${unitId}_db_products`, MOCK_PRODUCTS);
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>(`${unitId}_db_transactions`, MOCK_TRANSACTIONS as any);
   const [reports, setReports] = useLocalStorage<DailyReport[]>(`${unitId}_db_reports`, []);
@@ -101,7 +100,6 @@ const StoreSystem: React.FC<{ unitId: string, unitName: string, onLogoutUnit: ()
             const sold = rep.items.find(i => i.productName === p.name); 
             return sold ? { ...p, stock: p.stock - sold.quantity } : p; 
         }));
-        
         setCustomers(prevCustomers => {
             let updated = [...prevCustomers];
             rep.items.forEach(item => {
@@ -215,7 +213,6 @@ const StoreSystem: React.FC<{ unitId: string, unitName: string, onLogoutUnit: ()
         <div className="flex flex-col items-center mb-6 pt-4 relative">
              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-green-500/20 blur-[60px] rounded-full pointer-events-none"></div>
              <img src="/logo.png" alt="Sara Store" className="w-40 h-40 object-contain drop-shadow-2xl relative z-10 transition-transform hover:scale-105 duration-500" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-             {/* NOME DA IGREJA DINÂMICO */}
              <div className="mt-4 px-3 py-1 bg-green-500/10 rounded-full border border-green-500/20">
                 <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest text-center">SARA {unitName.toUpperCase()}</p>
              </div>
@@ -290,16 +287,74 @@ const StoreSystem: React.FC<{ unitId: string, unitName: string, onLogoutUnit: ()
 
 // --- COMPONENTE PRINCIPAL (SELETOR DE UNIDADE) ---
 const App: React.FC = () => {
-    // Estado para saber qual igreja está selecionada
+    // 1. DADOS DAS REGIONAIS PERSISTIDOS
+    const [units, setUnits] = useLocalStorage<RegionalUnit[]>('sara_regional_units', [
+        { id: 'freguesia', name: 'Freguesia', color: 'green', password: '123' },
+        { id: 'barra', name: 'Barra da Tijuca', color: 'blue', password: '123' },
+        { id: 'gardenia', name: 'Gardênia Azul', color: 'orange', password: '123' },
+    ]);
+
     const [selectedUnitId, setSelectedUnitId] = useLocalStorage<string | null>('sara_regional_selected_unit', null);
+    
+    // Estados para Modais
+    const [loginModalUnit, setLoginModalUnit] = useState<RegionalUnit | null>(null); // Qual unidade está tentando logar
+    const [loginPassword, setLoginPassword] = useState('');
+    
+    const [addModalOpen, setAddModalOpen] = useState(false);
+    const [newUnitName, setNewUnitName] = useState('');
+    const [newUnitPass, setNewUnitPass] = useState('');
 
-    const selectedUnit = REGIONAL_UNITS.find(u => u.id === selectedUnitId);
+    const handleSelectUnit = (unit: RegionalUnit) => {
+        setLoginModalUnit(unit);
+        setLoginPassword('');
+    };
 
-    // SE JÁ TIVER IGREJA SELECIONADA, MOSTRA O SISTEMA DELA
+    const handleConfirmLogin = () => {
+        if (!loginModalUnit) return;
+        if (loginPassword === loginModalUnit.password) {
+            setSelectedUnitId(loginModalUnit.id);
+            setLoginModalUnit(null);
+        } else {
+            alert("Senha incorreta!");
+        }
+    };
+
+    const handleCreateUnit = () => {
+        if (!newUnitName || !newUnitPass) { alert("Preencha todos os campos!"); return; }
+        const newId = newUnitName.toLowerCase().replace(/\s+/g, '_');
+        
+        // Verifica se já existe
+        if (units.some(u => u.id === newId)) { alert("Essa regional já existe!"); return; }
+
+        const newUnit: RegionalUnit = {
+            id: newId,
+            name: newUnitName,
+            color: 'green', // Cor padrão
+            password: newUnitPass
+        };
+
+        setUnits(prev => [...prev, newUnit]);
+        setAddModalOpen(false);
+        setNewUnitName('');
+        setNewUnitPass('');
+        alert(`Regional ${newUnitName} criada com sucesso!`);
+    };
+
+    const handleDeleteUnit = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        const confirm = window.prompt("Digite 'DELETAR' para apagar esta regional e todos os dados dela para sempre:");
+        if (confirm === 'DELETAR') {
+            setUnits(prev => prev.filter(u => u.id !== id));
+            // Opcional: Limpar localStorage dessa unit aqui
+        }
+    };
+
+    const selectedUnit = units.find(u => u.id === selectedUnitId);
+
     if (selectedUnit) {
         return (
             <StoreSystem 
-                key={selectedUnit.id} // FORÇA O REACT A RECARREGAR TUDO QUANDO MUDA DE IGREJA
+                key={selectedUnit.id} 
                 unitId={selectedUnit.id} 
                 unitName={selectedUnit.name} 
                 onLogoutUnit={() => setSelectedUnitId(null)} 
@@ -307,45 +362,102 @@ const App: React.FC = () => {
         );
     }
 
-    // SE NÃO, MOSTRA A TELA DE SELEÇÃO "ESTILO NETFLIX/SAAS"
     return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 relative overflow-hidden">
              {/* BACKGROUND ANIMADO */}
              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-green-900/20 via-black to-black"></div>
-             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
              
-             <div className="relative z-10 w-full max-w-4xl text-center">
+             <div className="relative z-10 w-full max-w-5xl text-center">
                  <div className="mb-12 animate-fade-in-up">
                      <img src="/logo.png" alt="Sara Store" className="w-32 h-32 object-contain mx-auto mb-6 drop-shadow-[0_0_25px_rgba(34,197,94,0.4)]" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                      <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2">SARA <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600">REGIONAL</span></h1>
                      <p className="text-zinc-400 text-lg">Selecione sua unidade para acessar o sistema</p>
                  </div>
 
-                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                     {REGIONAL_UNITS.map((unit) => (
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                     {/* LISTA DE REGIONAIS */}
+                     {units.map((unit) => (
                          <button 
                             key={unit.id}
-                            onClick={() => setSelectedUnitId(unit.id)}
+                            onClick={() => handleSelectUnit(unit)}
                             className="group relative bg-zinc-900/50 hover:bg-zinc-800 backdrop-blur-xl border border-zinc-800 hover:border-green-500/50 rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-green-900/20 flex flex-col items-center gap-4 text-left"
                          >
-                            <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 rounded-2xl transition-opacity"></div>
-                            
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold bg-zinc-950 border border-zinc-800 group-hover:border-${unit.color}-500 group-hover:text-${unit.color}-400 transition-colors shadow-lg`}>
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div onClick={(e) => handleDeleteUnit(e, unit.id)} className="p-2 hover:bg-red-500/20 text-zinc-600 hover:text-red-500 rounded-full transition-colors"><Trash2 size={14}/></div>
+                            </div>
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold bg-zinc-950 border border-zinc-800 group-hover:border-green-500 group-hover:text-green-400 transition-colors shadow-lg`}>
                                 <MapPin size={20} className="text-zinc-500 group-hover:text-green-500 transition-colors" />
                             </div>
-                            
                             <div className="relative z-10">
                                 <h3 className="text-white font-bold text-lg group-hover:text-green-400 transition-colors">{unit.name}</h3>
-                                <p className="text-zinc-600 text-xs font-medium uppercase tracking-wider mt-1 group-hover:text-zinc-400">Acessar Loja</p>
+                                <div className="flex items-center justify-center gap-1 mt-1">
+                                    <Lock size={10} className="text-zinc-600 group-hover:text-green-600"/>
+                                    <p className="text-zinc-600 text-xs font-medium uppercase tracking-wider group-hover:text-zinc-400">Protegido</p>
+                                </div>
                             </div>
                          </button>
                      ))}
-                 </div>
 
-                 <div className="mt-12 text-zinc-600 text-xs font-mono">
-                     <p>Rodrigues Growth Partners • Sistema Multi-Tenancy v2.0</p>
+                     {/* BOTÃO ADICIONAR NOVA */}
+                     <button 
+                        onClick={() => setAddModalOpen(true)}
+                        className="group relative bg-zinc-950/30 hover:bg-zinc-900 border border-dashed border-zinc-800 hover:border-zinc-600 rounded-2xl p-6 transition-all flex flex-col items-center justify-center gap-4 text-center min-h-[160px]"
+                     >
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center bg-zinc-900 group-hover:bg-zinc-800 transition-colors">
+                            <Plus size={24} className="text-zinc-500 group-hover:text-white" />
+                        </div>
+                        <p className="text-zinc-500 font-bold text-sm group-hover:text-white">Adicionar Regional</p>
+                     </button>
                  </div>
              </div>
+
+             {/* MODAL DE LOGIN NA REGIONAL */}
+             {loginModalUnit && (
+                 <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                     <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden animate-fade-in">
+                        <div className="absolute top-0 left-0 w-full h-[2px] bg-green-500"></div>
+                        <h2 className="text-2xl font-bold text-white mb-2">{loginModalUnit.name}</h2>
+                        <p className="text-zinc-500 text-sm mb-6">Digite a senha da unidade para entrar</p>
+                        
+                        <input 
+                            autoFocus
+                            type="password" 
+                            value={loginPassword} 
+                            onChange={e => setLoginPassword(e.target.value)} 
+                            onKeyDown={e => e.key === 'Enter' && handleConfirmLogin()}
+                            className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white text-center tracking-widest outline-none focus:border-green-500 mb-4" 
+                            placeholder="••••"
+                        />
+                        
+                        <div className="flex gap-3">
+                            <button onClick={() => setLoginModalUnit(null)} className="flex-1 py-3 text-zinc-500 hover:text-white font-bold transition-colors">Cancelar</button>
+                            <button onClick={handleConfirmLogin} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-colors">Acessar</button>
+                        </div>
+                     </div>
+                 </div>
+             )}
+
+             {/* MODAL CRIAR REGIONAL */}
+             {addModalOpen && (
+                 <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                     <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden animate-fade-in">
+                        <button onClick={() => setAddModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X size={20}/></button>
+                        <h2 className="text-xl font-bold text-white mb-6 flex items-center justify-center gap-2"><Plus size={20} className="text-green-500"/> Nova Regional</h2>
+                        
+                        <div className="space-y-4 text-left">
+                            <div>
+                                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Nome da Regional</label>
+                                <input value={newUnitName} onChange={e => setNewUnitName(e.target.value)} className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-green-500" placeholder="Ex: Bangu" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Senha de Acesso</label>
+                                <input type="password" value={newUnitPass} onChange={e => setNewUnitPass(e.target.value)} className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-green-500" placeholder="Crie uma senha segura" />
+                            </div>
+                            <button onClick={handleCreateUnit} className="w-full bg-white text-black py-3 rounded-xl font-bold hover:bg-zinc-200 transition-colors mt-2">Criar Unidade</button>
+                        </div>
+                     </div>
+                 </div>
+             )}
         </div>
     );
 };
