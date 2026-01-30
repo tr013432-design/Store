@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
-import './index.css' 
+// A linha do CSS foi removida daqui
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
