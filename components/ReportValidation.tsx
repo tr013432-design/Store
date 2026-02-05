@@ -27,11 +27,8 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
         (filterService === 'Todos' || item.serviceType === filterService)
     );
 
-    // Separa o que é Pendente do que é Histórico
     const pendingReports = filterList(reports.filter(r => r.status === 'PENDENTE'));
     const pendingOrders = filterList(orders.filter(o => o.status === 'PENDENTE'));
-    
-    // --- AQUI ESTÁ O HISTÓRICO DE VOLTA ---
     const validatedReports = filterList(reports.filter(r => r.status === 'VALIDADO'));
     const validatedOrders = filterList(orders.filter(o => o.status === 'ENTREGUE'));
 
@@ -66,7 +63,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                 </div>
             </div>
 
-            {/* --- SEÇÃO 1: PENDENTES (O que precisa de atenção) --- */}
+            {/* --- SEÇÃO 1: PENDENTES --- */}
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -81,7 +78,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                     </div>
                 ) : (
                     <>
-                        {/* LISTA DE VENDAS PENDENTES */}
+                        {/* PENDENTES - RELATÓRIOS */}
                         {pendingReports.map((report) => {
                             const currentTotal = calculateCardTotal(report.items);
                             const isMatch = Math.abs(currentTotal - report.grandTotal) < 0.01;
@@ -108,7 +105,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                                     </div>
 
                                     {openCardId === report.id && (
-                                        <div className="p-5 bg-black/40 border-t border-zinc-800">
+                                        <div className="p-5 bg-black/40 border-t border-zinc-800 animate-fade-in">
                                             {/* CHECKLIST DE ITENS */}
                                             <div className="space-y-1 mb-6">
                                                 <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-zinc-500 uppercase mb-2 px-3">
@@ -130,7 +127,7 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                                                 ))}
                                             </div>
 
-                                            {/* RODAPÉ DO CARD */}
+                                            {/* RESUMO */}
                                             <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4 border-t border-zinc-800">
                                                 <div className="flex gap-2 text-[10px] font-mono">
                                                     <span className="bg-green-500/10 text-green-400 px-2 py-1 rounded border border-green-500/20">PIX: R$ {report.totalPix.toFixed(2)}</span>
@@ -150,10 +147,10 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                             );
                         })}
 
-                        {/* LISTA DE ENCOMENDAS PENDENTES */}
+                        {/* PENDENTES - ENCOMENDAS */}
                         {pendingOrders.map(order => (
                             <div key={order.id} className="bg-zinc-900 border-l-4 border-blue-500 rounded-2xl shadow-lg overflow-hidden">
-                                <div className="p-5 flex justify-between items-center">
+                                <div className="p-5 flex justify-between items-center cursor-pointer hover:bg-zinc-800/50" onClick={() => toggleCard(order.id)}>
                                     <div className="flex gap-4 items-center">
                                         <div className="p-3 bg-blue-500/10 rounded-xl"><Package className="text-blue-500" size={24}/></div>
                                         <div>
@@ -163,62 +160,109 @@ export const ReportValidation: React.FC<ReportValidationProps> = ({
                                     </div>
                                     <div className="text-right">
                                         <p className="text-2xl font-black text-white">R$ {order.grandTotal.toFixed(2)}</p>
-                                        <button onClick={() => onValidateOrder(order.id, 'Admin')} className="mt-2 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-500 transition-colors">
-                                            Marcar Entregue
-                                        </button>
+                                        {openCardId === order.id ? <ChevronUp size={16} className="ml-auto mt-2 text-zinc-500"/> : <ChevronDown size={16} className="ml-auto mt-2 text-zinc-500"/>}
                                     </div>
                                 </div>
+                                {openCardId === order.id && (
+                                    <div className="p-5 bg-black/40 border-t border-zinc-800 animate-fade-in">
+                                        <div className="space-y-2 mb-4">
+                                            {order.items.map((item, idx) => (
+                                                <div key={idx} className="flex justify-between items-center bg-zinc-800 p-2 rounded-lg text-sm text-zinc-300">
+                                                     <span>{item.quantity}x {item.productName}</span>
+                                                     <span>R$ {item.total.toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button onClick={() => onValidateOrder(order.id, 'Admin')} className="w-full bg-blue-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-blue-500 transition-colors shadow-lg shadow-blue-900/20">
+                                            Confirmar Entrega e Recebimento
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </>
                 )}
             </div>
 
-            {/* --- SEÇÃO 2: HISTÓRICO (AGORA VISÍVEL E DARK) --- */}
+            {/* --- SEÇÃO 2: HISTÓRICO RESTAURADO E EXPANSÍVEL --- */}
             {(validatedReports.length > 0 || validatedOrders.length > 0) && (
                 <div className="pt-10 border-t border-white/10 mt-10">
                     <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-6 flex items-center gap-2">
                         <History size={16} className="text-zinc-600" /> Histórico Validado
                     </h3>
                     
-                    <div className="space-y-3 opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="space-y-3">
                         {validatedReports.map(report => (
-                            <div key={report.id} className="flex justify-between items-center p-4 bg-zinc-950 border border-zinc-800 rounded-xl group hover:border-zinc-700">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-2 bg-zinc-900 rounded-lg text-green-500 border border-zinc-800 group-hover:border-green-500/30"><CheckCircle size={18}/></div>
-                                    <div>
-                                        <p className="font-bold text-zinc-300 text-sm">{report.serviceType}</p>
-                                        <p className="text-xs text-zinc-600">Validado por {report.validatedBy || 'Admin'}</p>
+                            <div key={report.id} className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700 transition-all">
+                                <div className="flex justify-between items-center p-4 cursor-pointer hover:bg-zinc-900/50" onClick={() => toggleCard(report.id)}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 bg-green-500/10 rounded-lg text-green-500 border border-green-500/20"><CheckCircle size={18}/></div>
+                                        <div>
+                                            <p className="font-bold text-zinc-300 text-sm">{report.serviceType}</p>
+                                            <p className="text-xs text-zinc-600">Validado por {report.validatedBy || 'Admin'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <p className="font-mono font-bold text-zinc-500">R$ {report.grandTotal.toFixed(2)}</p>
+                                        {openCardId === report.id ? <ChevronUp size={16} className="text-zinc-600"/> : <ChevronDown size={16} className="text-zinc-600"/>}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-4">
-                                    <p className="font-mono font-bold text-zinc-500">R$ {report.grandTotal.toFixed(2)}</p>
-                                    <button 
-                                        onClick={() => { if(window.confirm('Tem certeza? Isso vai remover o dinheiro do caixa.')) onUnvalidateReport(report.id) }} 
-                                        className="p-2 text-zinc-700 hover:text-red-500 transition-colors" title="Desfazer validação">
-                                        <RotateCcw size={14} />
-                                    </button>
-                                </div>
+
+                                {/* DETALHES DO HISTÓRICO (CORREÇÃO AQUI) */}
+                                {openCardId === report.id && (
+                                    <div className="p-4 bg-black/40 border-t border-zinc-800 animate-fade-in">
+                                        <div className="mb-4 space-y-1">
+                                            {report.items.map((item, idx) => (
+                                                <div key={idx} className="flex justify-between text-xs text-zinc-400 border-b border-white/5 py-2">
+                                                    <span>{item.quantity}x {item.productName} <span className="text-zinc-600">({item.paymentMethod})</span></span>
+                                                    <span>R$ {item.total.toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <button 
+                                                onClick={() => { if(window.confirm('Tem certeza? Isso vai remover o dinheiro do caixa.')) onUnvalidateReport(report.id) }} 
+                                                className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-colors">
+                                                <RotateCcw size={14} /> Desfazer Validação
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))}
-                        
+
                         {validatedOrders.map(order => (
-                            <div key={order.id} className="flex justify-between items-center p-4 bg-zinc-950 border border-zinc-800 rounded-xl group hover:border-blue-900/50">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-2 bg-zinc-900 rounded-lg text-blue-500 border border-zinc-800"><Package size={18}/></div>
-                                    <div>
-                                        <p className="font-bold text-zinc-300 text-sm">Encomenda: {order.customerName}</p>
-                                        <p className="text-xs text-zinc-600">Entregue</p>
+                            <div key={order.id} className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden hover:border-blue-900/30 transition-all">
+                                <div className="flex justify-between items-center p-4 cursor-pointer hover:bg-zinc-900/50" onClick={() => toggleCard(order.id)}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500 border border-blue-500/20"><Package size={18}/></div>
+                                        <div>
+                                            <p className="font-bold text-zinc-300 text-sm">Encomenda: {order.customerName}</p>
+                                            <p className="text-xs text-zinc-600">Entregue</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <p className="font-mono font-bold text-zinc-500">R$ {order.grandTotal.toFixed(2)}</p>
+                                        {openCardId === order.id ? <ChevronUp size={16} className="text-zinc-600"/> : <ChevronDown size={16} className="text-zinc-600"/>}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-4">
-                                    <p className="font-mono font-bold text-zinc-500">R$ {order.grandTotal.toFixed(2)}</p>
-                                    <button 
-                                        onClick={() => onUnvalidateOrder(order.id)} 
-                                        className="p-2 text-zinc-700 hover:text-red-500 transition-colors">
-                                        <RotateCcw size={14} />
-                                    </button>
-                                </div>
+                                {openCardId === order.id && (
+                                    <div className="p-4 bg-black/40 border-t border-zinc-800 animate-fade-in">
+                                         <div className="mb-4 space-y-1">
+                                            {order.items.map((item, idx) => (
+                                                <div key={idx} className="flex justify-between text-xs text-zinc-400 border-b border-white/5 py-2">
+                                                    <span>{item.quantity}x {item.productName}</span>
+                                                    <span>R$ {item.total.toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <button onClick={() => onUnvalidateOrder(order.id)} className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-colors">
+                                                <RotateCcw size={14} /> Reabrir Encomenda
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
