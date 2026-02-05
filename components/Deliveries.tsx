@@ -1,24 +1,86 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { OrderSheet } from '../types';
-import { CheckCircle, MessageCircle, Package, Search, Truck, Clock, History, CalendarCheck } from 'lucide-react';
+import {
+  CheckCircle,
+  MessageCircle,
+  Package,
+  Search,
+  Truck,
+  Clock,
+  History,
+  CalendarCheck,
+} from 'lucide-react';
 
 interface DeliveriesProps {
   orders: OrderSheet[];
   onMarkDelivered: (orderId: string, itemId: string) => void;
 }
 
+type DeliveredOverrideMap = Record<string, true>;
+
+const STORAGE_KEY = 'sara_store_deliveries_override_v1';
+
 export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
 
-  // ✅ Estado local pra "sumir" da lista imediatamente (mesmo se o pai demorar)
-  const [deliveredOverride, setDeliveredOverride] = useState<Record<string, boolean>>({});
+  // ✅ Persistente: mesmo saindo e voltando, continua marcado como entregue
+  const [deliveredOverride, setDeliveredOverride] = useState<DeliveredOverrideMap>({});
+
+  // ✅ Carrega do localStorage ao abrir a tela
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') setDeliveredOverride(parsed);
+    } catch {
+      // ignora
+    }
+  }, []);
+
+  // ✅ Salva sempre que atualizar
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deliveredOverride));
+    } catch {
+      // ignora
+    }
+  }, [deliveredOverride]);
 
   const normalizeText = (v: any) => String(v ?? '').toLowerCase();
 
-  // ✅ Define "entregue" de forma robusta (caso seu backend use outro campo)
-  const isDelivered = (item: any, key: string) => {
-    if (deliveredOverride[key]) return true;
+  const safeDateLabel = (d: any) => {
+    const s = String(d ?? '');
+    if (!s) return '';
+    // espera YYYY-MM-DD, mas não quebra se vier outro formato
+    const parts = s.split('-');
+    if (parts.length === 3) return parts.reverse().join('/');
+    return s;
+  };
+
+  const buildItemKey = (orderId: string, index: number) => {
+    // ✅ chave estável e garantida: (orderId + índice)
+    // (suficiente para não depender de item.id, que no seu caso costuma não existir)
+    return `${orderId}::${index}`;
+  };
+
+  // ✅ qual ID enviar pro pai (pra ele persistir no seu estado/banco)
+  // tenta várias opções (caso seu backend use outro identificador)
+  const buildStableItemId = (item: any, index: number) => {
+    return String(
+      item?.id ??
+        item?.itemId ??
+        item?.orderItemId ??
+        item?.productId ??
+        item?.barcode ??
+        index
+    );
+  };
+
+  // ✅ Define "entregue" de forma robusta
+  const isDelivered = (item: any) => {
+    if (deliveredOverride[item.itemKey]) return true;
     return (
       item?.delivered === true ||
       item?.status === 'DELIVERED' ||
@@ -28,42 +90,35 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
     );
   };
 
-  // ✅ Gera um ID garantido pro item (não depende de item.id existir)
-  const buildItemKey = (orderId: string, item: any, index: number) => {
-    const raw =
-      item?.id ??
-      item?.itemId ??
-      item?.productId ??
-      item?.barcode ??
-      `${orderId}-${index}`;
-    return `${orderId}::${String(raw)}`;
-  };
-
-  // Processa todos os itens de pedidos validados
+  // Processa todos os itens de pedidos validados (Status ENTREGUE no OrderSheet = Validado Financeiramente)
   const allItems = useMemo(() => {
     return orders
       .filter(o => o.status === 'ENTREGUE')
       .flatMap(order =>
-        order.items.map((item: any, index: number) => {
-          const key = buildItemKey(order.id, item, index);
+        order.items.map((item: any, itemIndex: number) => {
+          const itemKey = buildItemKey(order.id, itemIndex);
+          const stableItemId = buildStableItemId(item, itemIndex);
+
           return {
             ...item,
             orderId: order.id,
             orderDate: order.date,
             volunteer: order.volunteerName,
-            itemKey: key,       // ✅ chave garantida
-            itemIndex: index,   // ✅ índice disponível se precisar
+            itemIndex,
+            itemKey,
+            stableItemId,
           };
         })
       );
   }, [orders]);
 
+  // Filtra de acordo com a aba e a busca
   const filteredItems = useMemo(() => {
     const term = normalizeText(searchTerm);
 
     return allItems
       .filter((item: any) => {
-        const delivered = isDelivered(item, item.itemKey);
+        const delivered = isDelivered(item);
 
         const matchesTab = activeTab === 'PENDING' ? !delivered : delivered;
 
@@ -81,7 +136,7 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
   }, [allItems, activeTab, searchTerm, deliveredOverride]);
 
   const pendingCount = useMemo(() => {
-    return allItems.filter((i: any) => !isDelivered(i, i.itemKey)).length;
+    return allItems.filter((i: any) => !isDelivered(i)).length;
   }, [allItems, deliveredOverride]);
 
   const handleNotifyArrival = (item: any) => {
@@ -97,21 +152,32 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  const handleDeliver = (item: any) => {
+  const handleDeliver = async (item: any) => {
     if (!window.confirm(`Confirmar que ${item.customerName} retirou o produto?`)) return;
 
-    // ✅ Some da lista na hora
+    // ✅ some da lista NA HORA e fica persistido (mesmo saindo e voltando)
     setDeliveredOverride(prev => ({ ...prev, [item.itemKey]: true }));
 
-    // ✅ Chama o pai com um ID consistente
-    // OBS: Estamos passando a parte "raw" do key (depois do "::") como itemId
-    const rawItemId = item.itemKey.split('::')[1] ?? item.itemKey;
-    onMarkDelivered(item.orderId, rawItemId);
+    // ✅ tenta persistir no pai/banco também (pra não depender só do localStorage)
+    try {
+      const result = onMarkDelivered(item.orderId, item.stableItemId);
+      // se for Promise, aguarda (mesmo estando tipado como void)
+      if (result && typeof (result as any).then === 'function') {
+        await (result as any);
+      }
+    } catch {
+      // se falhar, reverte o "sumir" (pra não mentir na UI)
+      setDeliveredOverride(prev => {
+        const next = { ...prev };
+        delete next[item.itemKey];
+        return next;
+      });
+      alert('Não foi possível concluir a entrega. Tente novamente.');
+    }
   };
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in text-zinc-100">
-
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-zinc-800 pb-6">
         <div>
@@ -137,18 +203,22 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
       <div className="flex gap-4 border-b border-zinc-800">
         <button
           onClick={() => setActiveTab('PENDING')}
-          className={`pb-3 text-sm font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 ${activeTab === 'PENDING'
-            ? 'text-green-500 border-green-500'
-            : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}
+          className={`pb-3 text-sm font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 ${
+            activeTab === 'PENDING'
+              ? 'text-green-500 border-green-500'
+              : 'text-zinc-500 border-transparent hover:text-zinc-300'
+          }`}
         >
           <Clock size={16} /> Aguardando Retirada ({pendingCount})
         </button>
 
         <button
           onClick={() => setActiveTab('HISTORY')}
-          className={`pb-3 text-sm font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 ${activeTab === 'HISTORY'
-            ? 'text-green-500 border-green-500'
-            : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}
+          className={`pb-3 text-sm font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 ${
+            activeTab === 'HISTORY'
+              ? 'text-green-500 border-green-500'
+              : 'text-zinc-500 border-transparent hover:text-zinc-300'
+          }`}
         >
           <History size={16} /> Histórico de Entregues
         </button>
@@ -166,24 +236,34 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
         ) : (
           filteredItems.map((item: any) => (
             <div
-              key={item.itemKey} // ✅ key estável
-              className={`p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-center gap-4 transition-all shadow-lg ${activeTab === 'PENDING'
-                ? 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
-                : 'bg-black border-zinc-900 opacity-75'}`}
+              key={item.itemKey}
+              className={`p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-center gap-4 transition-all shadow-lg ${
+                activeTab === 'PENDING'
+                  ? 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                  : 'bg-black border-zinc-900 opacity-75'
+              }`}
             >
               {/* Info */}
               <div className="flex-1 flex items-start gap-4 w-full">
-                <div className={`p-3 rounded-xl hidden md:block ${activeTab === 'PENDING' ? 'bg-zinc-800 text-green-500' : 'bg-zinc-900 text-zinc-600'}`}>
+                <div
+                  className={`p-3 rounded-xl hidden md:block ${
+                    activeTab === 'PENDING' ? 'bg-zinc-800 text-green-500' : 'bg-zinc-900 text-zinc-600'
+                  }`}
+                >
                   {activeTab === 'PENDING' ? <Package size={24} /> : <CheckCircle size={24} />}
                 </div>
 
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className={`font-bold text-lg ${activeTab === 'PENDING' ? 'text-white' : 'text-zinc-500 line-through'}`}>
+                    <h3
+                      className={`font-bold text-lg ${
+                        activeTab === 'PENDING' ? 'text-white' : 'text-zinc-500 line-through'
+                      }`}
+                    >
                       {item.customerName}
                     </h3>
                     <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded uppercase tracking-wide border border-zinc-700">
-                      {String(item.orderDate).split('-').reverse().join('/')}
+                      {safeDateLabel(item.orderDate)}
                     </span>
                   </div>
 
@@ -210,7 +290,7 @@ export const Deliveries: React.FC<DeliveriesProps> = ({ orders, onMarkDelivered 
                   </button>
 
                   <button
-                    onClick={() => handleDeliver(item)}
+                    onClick={() => void handleDeliver(item)}
                     className="flex-1 md:flex-none px-6 py-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all border border-zinc-700"
                   >
                     <CheckCircle size={16} /> Entregar
