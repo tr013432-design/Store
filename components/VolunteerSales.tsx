@@ -1,510 +1,842 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { Product, PaymentMethod, DailyReport, ReportItem, CartItem, Customer } from '../types';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Expense } from './types';
+import { Dashboard } from './components/Dashboard';
+import { VolunteerSales } from './components/VolunteerSales';
+import { ReportValidation } from './components/ReportValidation';
+import { Orders } from './components/Orders';
+import { Inventory } from './components/Inventory';
+import { Settings } from './components/Settings';
+import { Deliveries } from './components/Deliveries';
+import { Loyalty } from './components/Loyalty';
+import { Customers } from './components/Customers';
+import { Expenses } from './components/Expenses';
 import {
-  Plus,
-  Minus,
-  Trash2,
-  Search,
-  Barcode,
-  Save,
-  FileText,
-  User,
-  Church,
-  Calendar,
-  Clock,
-  ScanLine,
-  Phone,
-  Star,
-  X,
-  DollarSign,
-  CreditCard,
-  ShoppingCart,
-  ShoppingBag
+  LayoutDashboard, Package, Menu, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, LogOut, Truck,
+  Star, Users, TrendingDown, Store, ChevronRight, MapPin, Plus, X, Trash2, Download
 } from 'lucide-react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-import { BarcodeScanner } from './BarcodeScanner';
 
-interface VolunteerSalesProps {
-  products: Product[];
-  availableVolunteers: string[];
-  availableServices: string[];
-  customers: Customer[];
-  pointsValue: number;
-  onSubmitReport: (report: Omit<DailyReport, 'id' | 'status'>) => void;
+// --- TIPOS ---
+interface RegionalUnit {
+  id: string;
+  name: string;
+  color: string;
+  password: string;
 }
 
-const digitsOnly = (v: any) => String(v ?? '').replace(/\D/g, '');
+enum View { DASHBOARD, VOLUNTEER_REPORT, ORDERS, VALIDATION, INVENTORY, SETTINGS, DELIVERIES, LOYALTY, CUSTOMERS, EXPENSES }
 
-export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
-  products,
-  onSubmitReport,
-  availableVolunteers,
-  availableServices,
-  customers,
-  pointsValue
-}) => {
-  // --- DADOS GERAIS ---
-  const [volunteerName, setVolunteerName] = useLocalStorage('draft_report_volunteer', '');
-  const [serviceType, setServiceType] = useLocalStorage('draft_report_service', '');
-  const [reportItems, setReportItems] = useLocalStorage<ReportItem[]>('draft_report_list', []);
-  const [notes, setNotes] = useLocalStorage('draft_report_notes', '');
+// --- SISTEMA DA LOJA ---
+const StoreSystem: React.FC<{ unitId: string, unitName: string, onLogoutUnit: () => void }> = ({ unitId, unitName, onLogoutUnit }) => {
+  const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
+  const [loading, setLoading] = useState(true);
 
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
-  const [reportTime, setReportTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+  // DADOS
+  const [products, setProducts] = useState<Product[]>([]);
+  const [reports, setReports] = useState<DailyReport[]>([]);
+  const [orders, setOrders] = useState<OrderSheet[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const [currentItem, setCurrentItem] = useLocalStorage<CartItem | null>('draft_report_current_item', null);
-  const [searchTerm, setSearchTerm] = useLocalStorage('draft_report_search', '');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Configs locais
+  const [pointsConfig, setPointsConfig] = useState<Record<string, number>>({
+    'Livros e Bíblias': 15, 'Vestuário': 30, 'Papelaria': 5, 'Acessórios': 5, 'Outros': 1
+  });
+  const [pointsValue, setPointsValue] = useState<number>(0.10);
+  const [availableVolunteers, setAvailableVolunteers] = useState<string[]>(['Voluntário 1', 'Voluntário 2']);
+  const [availableServices, setAvailableServices] = useState<string[]>(['Culto da Família', 'Arena Jovem', 'Domingo']);
+  const [admins, setAdmins] = useState<AdminUser[]>([{ id: '1', name: 'Admin', email: `admin@${unitId}.com`, password: '123' }]);
 
-  // Telefone limpo (apenas dígitos) - é isso que vai pro relatório e pro vínculo de pontos
-  const cleanPhone = useMemo(() => digitsOnly(customerPhone), [customerPhone]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isDashboardUnlocked, setIsDashboardUnlocked] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [isLoadingLogin, setIsLoadingLogin] = useState(false);
 
-  // ✅ Busca o cliente corretamente (por phone, não por id UUID)
-  const activeCustomer = useMemo(() => {
-    if (!cleanPhone) return undefined;
+  const normalizePhone = (v: any) => {
+    let d = String(v ?? '').replace(/\D/g, '');
+    if (d.startsWith('55') && d.length > 11) d = d.slice(2);
+    return d;
+  };
 
-    return customers.find((c: any) => {
-      const phone =
-        digitsOnly(c.phone) ||
-        digitsOnly(c.customerPhone) ||
-        digitsOnly(c.customer_phone) ||
-        digitsOnly(c.id); // fallback caso alguém tenha salvado telefone no id no passado
-      return phone === cleanPhone;
-    });
-  }, [cleanPhone, customers]);
+  const findCustomerByPhone = (phoneRaw: string) => {
+    const p = normalizePhone(phoneRaw);
+    if (!p) return undefined;
 
-  // Handlers (Scanner, Busca, Adicionar Item, Finalizar)
-  const handleScanSuccess = (code: string) => {
-    const foundProduct = products.find(p => (p as any).barcode === code);
-    if (foundProduct) {
-      setCurrentItem({ ...(foundProduct as any), quantity: 1 });
-      setSearchTerm('');
-      setIsScanning(false);
+    return customers.find((c: any) => normalizePhone(c.phone ?? c.id) === p);
+  };
+
+  const ensureCustomerExists = async (phoneRaw: string) => {
+    const clean = normalizePhone(phoneRaw);
+    if (!clean) return undefined;
+
+    const local = findCustomerByPhone(clean);
+    if (local) return local;
+
+    // Tenta buscar no banco (caso estado esteja desatualizado)
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('unit_id', unitId)
+      .eq('phone', clean)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      setCustomers(prev => [...prev, existing[0] as any]);
+      return existing[0] as any;
+    }
+
+    // Cria automaticamente
+    const newCust: any = {
+      unit_id: unitId,
+      name: `Cliente ${clean.slice(-4)}`,
+      phone: clean,
+      points: 0,
+      totalSpent: 0,
+      lastPurchase: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase.from('customers').insert([newCust]).select();
+    if (error) {
+      // Se der conflito/qualquer erro, tenta buscar de novo
+      const { data: retry } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('unit_id', unitId)
+        .eq('phone', clean)
+        .limit(1);
+      if (retry && retry.length > 0) {
+        setCustomers(prev => [...prev, retry[0] as any]);
+        return retry[0] as any;
+      }
+      return undefined;
+    }
+
+    if (data && data[0]) {
+      setCustomers(prev => [...prev, data[0] as any]);
+      return data[0] as any;
+    }
+
+    return undefined;
+  };
+
+  // ✅ Aplica pontuação (ganha por categoria / desconta por Sara Points)
+  const applyLoyaltyFromItems = async (items: any[], purchaseDate: string) => {
+    if (!items || items.length === 0) return;
+
+    // Agrupa deltas por cliente
+    const deltas: Record<string, { pointsDelta: number; spentDelta: number; lastPurchase: string }> = {};
+    const lastPurchaseIso = new Date(`${purchaseDate}T00:00:00`).toISOString();
+
+    for (const it of items) {
+      const phone = normalizePhone(it.customerPhone);
+      if (!phone) continue;
+
+      const customer = await ensureCustomerExists(phone);
+      if (!customer) continue;
+
+      const product = products.find(p => p.name === it.productName);
+      const category = (product as any)?.category;
+      const qty = Number(it.quantity ?? 1);
+      const total = Number(it.total ?? 0);
+
+      const ptsPer = Number(pointsConfig?.[category] ?? 0);
+      const earned = (String(it.paymentMethod) === 'Sara Points') ? 0 : (ptsPer * qty);
+      const costInPoints = (String(it.paymentMethod) === 'Sara Points') ? Math.ceil(total / pointsValue) : 0;
+
+      const delta = earned - costInPoints;
+      const cid = String((customer as any).id);
+
+      if (!deltas[cid]) deltas[cid] = { pointsDelta: 0, spentDelta: 0, lastPurchase: lastPurchaseIso };
+      deltas[cid].pointsDelta += delta;
+      deltas[cid].spentDelta += total; // total gasto (mesmo se pagou com pontos, mantém histórico)
+      deltas[cid].lastPurchase = lastPurchaseIso;
+    }
+
+    // Atualiza banco + estado
+    const ids = Object.keys(deltas);
+    for (const id of ids) {
+      const delta = deltas[id];
+      const cust: any = customers.find((c: any) => String(c.id) === String(id));
+      if (!cust) continue;
+
+      const currentPoints = Number(cust.points ?? 0);
+      const currentSpent = Number(cust.totalSpent ?? cust.total_spent ?? 0);
+
+      const newPoints = currentPoints + delta.pointsDelta;
+      const newSpent = currentSpent + delta.spentDelta;
+
+      const updatePayload: any = {
+        points: newPoints,
+        lastPurchase: delta.lastPurchase
+      };
+
+      // compat com snake_case se existir
+      if ('totalSpent' in cust) updatePayload.totalSpent = newSpent;
+      else if ('total_spent' in cust) updatePayload.total_spent = newSpent;
+      else updatePayload.totalSpent = newSpent;
+
+      if ('lastPurchase' in cust) updatePayload.lastPurchase = delta.lastPurchase;
+      else if ('last_purchase' in cust) updatePayload.last_purchase = delta.lastPurchase;
+
+      const { error } = await supabase.from('customers').update(updatePayload).eq('id', id);
+      if (!error) {
+        setCustomers(prev => prev.map((c: any) => String(c.id) === String(id) ? { ...c, ...updatePayload } : c));
+      }
+    }
+  };
+
+  // --- CARREGAR DADOS ---
+  useEffect(() => {
+    fetchData();
+  }, [unitId]);
+
+  const fetchData = async () => {
+    setLoading(true);
+
+    const { data: prodData } = await supabase.from('products').select('*').eq('unit_id', unitId);
+    if (prodData) setProducts(prodData as any);
+
+    const { data: custData } = await supabase.from('customers').select('*').eq('unit_id', unitId);
+    if (custData) setCustomers(custData as any);
+
+    const { data: repData } = await supabase.from('reports').select('*').eq('unit_id', unitId).order('created_at', { ascending: false });
+    if (repData) setReports(repData as any);
+
+    const { data: ordData } = await supabase.from('orders').select('*').eq('unit_id', unitId).order('created_at', { ascending: false });
+    if (ordData) setOrders(ordData as any);
+
+    const { data: expData } = await supabase.from('expenses').select('*').eq('unit_id', unitId).order('created_at', { ascending: false });
+    if (expData) setExpenses(expData as any);
+
+    setLoading(false);
+  };
+
+  // --- Atualiza transações ---
+  useEffect(() => {
+    const txReports = reports.filter((r: any) => r.status === 'VALIDADO').map((r: any) => ({
+      id: r.id, date: r.date, total: r.grandTotal, paymentMethod: 'Dinheiro',
+      items: r.items, volunteerName: r.volunteerName, serviceType: r.serviceType
+    }));
+    const txOrders = orders.filter((o: any) => o.status === 'ENTREGUE').map((o: any) => ({
+      id: o.id, date: o.date, total: o.grandTotal, paymentMethod: 'Dinheiro',
+      items: o.items, volunteerName: o.volunteerName, serviceType: o.serviceType
+    }));
+    setTransactions([...(txReports as any), ...(txOrders as any)] as any);
+  }, [reports, orders]);
+
+  // --- CRUD ---
+  const handleAddProduct = async (prod: Product) => {
+    const { id, ...newProd } = prod as any;
+    const { data, error } = await supabase.from('products').insert([{ ...newProd, unit_id: unitId }]).select();
+    if (data) setProducts(prev => [data[0] as any, ...prev]);
+    if (error) alert('Erro ao criar: ' + error.message);
+  };
+
+  const handleUpdateProduct = async (prod: Product) => {
+    const { error } = await supabase.from('products').update(prod as any).eq('id', (prod as any).id);
+    if (!error) setProducts(prev => prev.map((p: any) => p.id === (prod as any).id ? (prod as any) : p));
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (!error) setProducts(prev => prev.filter((p: any) => p.id !== id));
+  };
+
+  // ✅ SUBMIT DO RELATÓRIO (com payload LIMPO + aplica pontos aqui)
+  const handleReportSubmit = async (d: any) => {
+    const payload: any = {
+      unit_id: unitId,
+      status: 'PENDENTE',
+      volunteerName: d.volunteerName,
+      serviceType: d.serviceType,
+      date: d.date,
+      time: d.time,
+      items: d.items ?? [],
+      notes: d.notes ?? '',
+      totalCash: d.totalCash ?? 0,
+      totalPix: d.totalPix ?? 0,
+      totalDebit: d.totalDebit ?? 0,
+      totalCredit: d.totalCredit ?? 0,
+      grandTotal: d.grandTotal ?? 0,
+    };
+
+    const { data, error } = await supabase.from('reports').insert([payload]).select();
+    if (error) {
+      alert('Erro: ' + error.message);
+      return;
+    }
+
+    if (data && data[0]) {
+      setReports(prev => [data[0] as any, ...prev]);
+
+      // ✅ aplica fidelidade imediatamente ao enviar
+      await applyLoyaltyFromItems(payload.items, payload.date);
+
+      alert('Venda enviada para validação! (Pontos atualizados)');
+    }
+  };
+
+  const handleOrderSubmit = async (d: any) => {
+    const { data, error } = await supabase.from('orders').insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }]).select();
+    if (data) {
+      setOrders(prev => [data[0] as any, ...prev]);
+      alert('Encomenda registrada!');
+    }
+    if (error) alert('Erro: ' + error.message);
+  };
+
+  // ✅ VALIDAR RELATÓRIO (sem mexer nos pontos aqui para não duplicar)
+  const handleValidateReport = async (id: string, admin: string) => {
+    const { error } = await supabase.from('reports').update({ status: 'VALIDADO', validated_by: admin }).eq('id', id);
+    if (error) return alert('Erro ao validar');
+
+    const rep: any = reports.find((r: any) => r.id === id);
+    if (rep) {
+      setReports(prev => prev.map((r: any) => r.id === id ? { ...r, status: 'VALIDADO', validatedBy: admin } : r));
+
+      for (const item of rep.items) {
+        const product: any = products.find((p: any) => p.name === item.productName);
+        if (product) {
+          const newStock = Number(product.stock ?? 0) - Number(item.quantity ?? 0);
+          await supabase.from('products').update({ stock: newStock }).eq('id', product.id);
+          setProducts(prev => prev.map((p: any) => p.id === product.id ? { ...p, stock: newStock } : p));
+        }
+      }
+    }
+  };
+
+  const handleAddExpense = async (newExp: Expense) => {
+    const { data } = await supabase.from('expenses').insert([{ ...(newExp as any), unit_id: unitId }]).select();
+    if (data) setExpenses(prev => [data[0] as any, ...prev]);
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    await supabase.from('expenses').delete().eq('id', id);
+    setExpenses(prev => prev.filter((e: any) => e.id !== id));
+  };
+
+  const handleSaveCustomer = async (c: Customer) => {
+    const phoneClean = normalizePhone((c as any).phone ?? (c as any).id);
+
+    const existing = customers.find((cust: any) => normalizePhone(cust.phone ?? cust.id) === phoneClean);
+
+    if (existing) {
+      const { error } = await supabase.from('customers').update(c as any).eq('id', (existing as any).id);
+      if (!error) setCustomers(prev => prev.map((x: any) => x.id === (existing as any).id ? { ...x, ...(c as any) } : x));
     } else {
-      alert(`Produto ${code} não encontrado!`);
-      setIsScanning(false);
+      const { id, ...newCust } = c as any;
+      const payload = { ...newCust, phone: phoneClean, unit_id: unitId };
+      const { data, error } = await supabase.from('customers').insert([payload]).select();
+      if (data) setCustomers(prev => [...prev, data[0] as any]);
+      if (error) alert('Erro cliente: ' + error.message);
     }
   };
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      const term = searchTerm.trim();
-      const foundProduct = products.find(
-        p => (p as any).barcode === term || String((p as any).name).toLowerCase() === term.toLowerCase()
-      );
-      if (foundProduct) {
-        setCurrentItem({ ...(foundProduct as any), quantity: 1 });
-        setSearchTerm('');
-      } else {
-        alert('Produto não encontrado');
-      }
-    }
+  const handleDeleteCustomer = async (id: string) => {
+    await supabase.from('customers').delete().eq('id', id);
+    setCustomers(p => p.filter((x: any) => x.id !== id));
   };
 
-  const addLineToReport = (method: PaymentMethod) => {
-    if (!currentItem) return;
-
-    // ✅ Se for pagar com pontos, precisa existir cliente (pra ter saldo)
-    if (method === 'Sara Points') {
-      if (!activeCustomer) {
-        alert('Informe o telefone do cliente para usar pontos.');
-        return;
-      }
-      const costInPoints = (currentItem.price * currentItem.quantity) / pointsValue;
-      if ((activeCustomer as any).points < costInPoints) {
-        alert(`Saldo insuficiente! Necessário: ${costInPoints.toFixed(0)} pts`);
-        return;
-      }
-    }
-
-    // ✅ Salva TELEFONE (dígitos) no item — não salva UUID
-    const phoneToSave = cleanPhone.length >= 8 ? cleanPhone : undefined;
-
-    const newItem: ReportItem = {
-      productName: currentItem.name,
-      quantity: currentItem.quantity,
-      paymentMethod: method,
-      total: currentItem.price * currentItem.quantity,
-      customerPhone: phoneToSave
-    } as any;
-
-    setReportItems(prev => [newItem, ...prev]);
-    setCurrentItem(null);
-
-    setTimeout(() => searchInputRef.current?.focus(), 100);
+  // --- LOGIN DASHBOARD ---
+  const handleDashboardLogin = () => {
+    setIsLoadingLogin(true);
+    setTimeout(() => {
+      const admin = admins.find(a => (a as any).email === loginEmail && (a as any).password === loginPass);
+      if (admin) { setIsDashboardUnlocked(true); setLoginEmail(''); setLoginPass(''); }
+      else { alert('🚫 Acesso Negado!'); }
+      setIsLoadingLogin(false);
+    }, 800);
   };
 
-  const handleFinalizeReport = () => {
-    if (!volunteerName || !serviceType) {
-      alert('Preencha Voluntário e Culto');
+  // ✅ VALIDAR ENCOMENDA (persistindo no Supabase)
+  const handleValidateOrder = async (id: string, admin: string) => {
+    const { error } = await supabase.from('orders').update({ status: 'ENTREGUE', validated_by: admin }).eq('id', id);
+    if (error) return alert('Erro ao validar encomenda: ' + error.message);
+
+    setOrders(prev => prev.map((o: any) => o.id === id ? { ...o, status: 'ENTREGUE', validatedBy: admin } : o));
+    alert('Encomenda Entregue!');
+  };
+
+  // ✅ LOGÍSTICA: marcar item como entregue (some da aba pendente)
+  const handleMarkItemDelivered = async (orderId: string, itemId: string) => {
+    const order: any = orders.find((o: any) => o.id === orderId);
+    if (!order) return;
+
+    const updatedItems = (order.items ?? []).map((it: any, idx: number) => {
+      const raw = String(it?.id ?? it?.itemId ?? it?.productId ?? it?.barcode ?? idx);
+      if (raw === String(itemId)) {
+        return { ...it, delivered: true, deliveredAt: new Date().toISOString() };
+      }
+      return it;
+    });
+
+    const { error } = await supabase.from('orders').update({ items: updatedItems }).eq('id', orderId);
+    if (error) return alert('Erro ao marcar entregue: ' + error.message);
+
+    setOrders(prev => prev.map((o: any) => o.id === orderId ? { ...o, items: updatedItems } : o));
+  };
+
+  // ✅ FIDELIDADE: ajuste manual
+  const handleManualAddPoints = async (phoneRaw: string, points: number) => {
+    const phone = normalizePhone(phoneRaw);
+    if (!phone) return;
+
+    const cust: any = findCustomerByPhone(phone);
+    if (!cust) {
+      alert('Cliente não encontrado para ajuste manual.');
       return;
     }
-    if (reportItems.length === 0) {
-      alert('Relatório vazio');
+
+    const newPoints = Number(cust.points ?? 0) + Number(points ?? 0);
+
+    const { error } = await supabase.from('customers').update({ points: newPoints }).eq('id', cust.id);
+    if (error) return alert('Erro ao atualizar pontos: ' + error.message);
+
+    setCustomers(prev => prev.map((c: any) => c.id === cust.id ? { ...c, points: newPoints } : c));
+  };
+
+  // ✅ FIDELIDADE: resgatar
+  const handleRedeemReward = async (phoneRaw: string, cost: number) => {
+    const phone = normalizePhone(phoneRaw);
+    if (!phone) return;
+
+    const cust: any = findCustomerByPhone(phone);
+    if (!cust) {
+      alert('Cliente não encontrado para resgate.');
       return;
     }
 
-    const totalCash = reportItems.filter(i => i.paymentMethod === 'Dinheiro').reduce((a, b) => a + b.total, 0);
-    const totalPix = reportItems.filter(i => i.paymentMethod === 'Pix').reduce((a, b) => a + b.total, 0);
-    const totalDebit = reportItems.filter(i => String(i.paymentMethod).includes('Débito')).reduce((a, b) => a + b.total, 0);
-    const totalCredit = reportItems.filter(i => String(i.paymentMethod).includes('Crédito')).reduce((a, b) => a + b.total, 0);
+    const current = Number(cust.points ?? 0);
+    if (current < cost) return alert('Saldo insuficiente para resgate.');
 
-    // ✅ Envia também customerPhone no report inteiro (pra sua regra de pontuação conseguir identificar)
-    const reportPhone = cleanPhone.length >= 8 ? cleanPhone : undefined;
+    const newPoints = current - cost;
 
-    onSubmitReport(
-      {
-        volunteerName,
-        serviceType,
-        date: reportDate,
-        time: reportTime,
-        items: reportItems,
-        notes,
-        totalCash,
-        totalPix,
-        totalDebit,
-        totalCredit,
-        grandTotal: totalCash + totalPix + totalDebit + totalCredit,
+    const { error } = await supabase.from('customers').update({ points: newPoints }).eq('id', cust.id);
+    if (error) return alert('Erro ao resgatar: ' + error.message);
 
-        // extras (mesmo que o type não declare, o backend/DB salva e seu App.tsx consegue ler)
-        customerPhone: reportPhone,
-        customerName: activeCustomer ? (activeCustomer as any).name : undefined
-      } as any
+    setCustomers(prev => prev.map((c: any) => c.id === cust.id ? { ...c, points: newPoints } : c));
+  };
+
+  // Placeholders que ainda não foram implementados
+  const handleUnvalidateReport = (id: string) => { };
+  const handleUnvalidateOrder = (id: string) => { };
+  const handleToggleReportItem = (id: string, idx: number) => { };
+  const handleToggleOrderItem = (id: string, idx: number) => { };
+
+  const addVolunteer = (n: string) => setAvailableVolunteers(p => [...p, n]);
+  const removeVolunteer = (n: string) => setAvailableVolunteers(p => p.filter(v => v !== n));
+  const addService = (s: string) => setAvailableServices(p => [...p, s]);
+  const removeService = (s: string) => setAvailableServices(p => p.filter(x => x !== s));
+  const addAdmin = (a: any) => setAdmins(p => [...p, { ...a, id: Date.now().toString() }]);
+  const removeAdmin = (id: string) => setAdmins(p => p.filter((a: any) => a.id !== id));
+
+  const pendingCount = reports.filter((r: any) => r.status === 'PENDENTE').length + orders.filter((o: any) => o.status === 'PENDENTE').length;
+
+  // --- UI ---
+  const SidebarContent = () => (
+    <div className="space-y-8 mt-4">
+      <div>
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Operacional</p>
+        <div className="space-y-1">
+          <NavItem view={View.VOLUNTEER_REPORT} icon={Store} label="Venda Balcão" />
+          <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
+          <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
+          <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Gestão</p>
+        <div className="space-y-1">
+          <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Dashboard" />
+          <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validações" badge={pendingCount} />
+          <NavItem view={View.EXPENSES} icon={TrendingDown} label="Saídas / Despesas" />
+          <NavItem view={View.DELIVERIES} icon={Truck} label="Logística" />
+          <NavItem view={View.LOYALTY} icon={Star} label="Fidelidade" />
+        </div>
+      </div>
+      <div className="pt-4 border-t border-zinc-900/50">
+        <NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" />
+      </div>
+    </div>
+  );
+
+  const NavItem = ({ view, icon: Icon, label, badge }: any) => {
+    const active = currentView === view;
+    return (
+      <button
+        onClick={() => { setCurrentView(view); setMobileMenuOpen(false); }}
+        className={`group flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm mx-1 ${
+          active ? 'bg-gradient-to-r from-zinc-900 to-transparent text-white border-l-2 border-green-500'
+            : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/50'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <Icon size={18} className={`transition-colors ${active ? 'text-green-500' : 'text-zinc-600 group-hover:text-zinc-400'}`} />
+          <span>{label}</span>
+        </div>
+        {badge > 0 && <span className="bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] rounded-full flex items-center justify-center font-bold px-1">{badge}</span>}
+        {active && <ChevronRight size={14} className="text-zinc-700" />}
+      </button>
     );
-
-    setReportItems([]);
-    setNotes('');
-    setVolunteerName('');
-    setCurrentItem(null);
-    setCustomerPhone('');
-    alert('Relatório enviado para Validação Pastoral!');
   };
-
-  const totalGeral = reportItems.filter(i => i.paymentMethod !== 'Sara Points').reduce((a, b) => a + b.total, 0);
 
   return (
-    <div className="flex flex-col h-full gap-6 pb-24 lg:pb-0 animate-fade-in relative z-10">
-      {isScanning && <BarcodeScanner onScan={handleScanSuccess} onClose={() => setIsScanning(false)} />}
+    <div className="min-h-screen bg-zinc-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black text-zinc-100 font-sans selection:bg-green-500/30 selection:text-green-200">
+      <aside className="hidden lg:flex flex-col w-72 bg-black/40 border-r border-white/5 p-4 fixed h-full z-20 backdrop-blur-xl">
+        <div className="flex flex-col items-center mb-6 pt-4 relative">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-green-500/20 blur-[60px] rounded-full pointer-events-none"></div>
+          <img
+            src="/logo.png"
+            alt="Sara Store"
+            className="w-40 h-40 object-contain drop-shadow-2xl relative z-10 transition-transform hover:scale-105 duration-500"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+          <div className="mt-4 px-3 py-1 bg-green-500/10 rounded-full border border-green-500/20">
+            <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest text-center">SARA {unitName.toUpperCase()}</p>
+          </div>
+        </div>
 
-      {/* CABEÇALHO (Visual Dark Premium) */}
-      <div className="bg-zinc-900/80 backdrop-blur-xl p-5 rounded-2xl shadow-lg border border-white/10 grid grid-cols-1 md:grid-cols-4 gap-6 relative overflow-hidden group">
-        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-green-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-zinc-400 flex items-center gap-1 uppercase tracking-wider">
-            <User size={12} className="text-green-500" /> Voluntário
-          </label>
-          <input
-            list="volunteers_list"
-            value={volunteerName}
-            onChange={e => setVolunteerName(e.target.value)}
-            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-green-500 transition-all"
-            placeholder="Selecione..."
-          />
-          <datalist id="volunteers_list">{availableVolunteers.map(v => <option key={v} value={v} />)}</datalist>
+        <div className="flex-1 overflow-y-auto custom-scrollbar"><SidebarContent /></div>
+
+        <div className="p-4 mt-4 border-t border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-800 flex items-center justify-center text-xs font-bold shadow-lg shadow-green-500/20">A</div>
+            <div>
+              <p className="text-xs font-bold text-white">Admin</p>
+              <p className="text-[10px] text-zinc-500">Logado</p>
+            </div>
+          </div>
+          <button onClick={onLogoutUnit} className="text-zinc-500 hover:text-red-500 transition-colors" title="Sair da Unidade">
+            <LogOut size={16} />
+          </button>
         </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-zinc-400 flex items-center gap-1 uppercase tracking-wider">
-            <Church size={12} className="text-green-500" /> Culto / Evento
-          </label>
-          <input
-            list="services_list"
-            value={serviceType}
-            onChange={e => setServiceType(e.target.value)}
-            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-green-500 transition-all"
-            placeholder="Selecione..."
-          />
-          <datalist id="services_list">{availableServices.map(s => <option key={s} value={s} />)}</datalist>
+      </aside>
+
+      <div className="lg:hidden fixed top-0 w-full bg-black/80 backdrop-blur-md z-30 border-b border-white/10 px-6 py-4 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" className="w-10 h-10" alt="Logo" />
+          <div className="flex flex-col">
+            <span className="font-bold text-sm tracking-widest text-white">SARA STORE</span>
+            <span className="text-[9px] text-green-500 font-bold uppercase">{unitName}</span>
+          </div>
         </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-zinc-400 flex items-center gap-1 uppercase tracking-wider">
-            <Calendar size={12} className="text-green-500" /> Data
-          </label>
-          <input
-            type="date"
-            value={reportDate}
-            onChange={e => setReportDate(e.target.value)}
-            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-green-500 transition-all"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-zinc-400 flex items-center gap-1 uppercase tracking-wider">
-            <Clock size={12} className="text-green-500" /> Hora
-          </label>
-          <input
-            type="time"
-            value={reportTime}
-            onChange={e => setReportTime(e.target.value)}
-            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-green-500 transition-all"
-          />
-        </div>
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-zinc-400"><Menu size={24} /></button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        {/* COLUNA DA ESQUERDA: AÇÕES */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          {/* CARD DE ADICIONAR PRODUTO */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/10 flex flex-col relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-green-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <h3 className="font-bold text-white text-sm mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-white/10 pb-3">
-              <Barcode size={16} className="text-green-500" /> Adicionar Linha
-            </h3>
+      {mobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/90 backdrop-blur-xl" onClick={() => setMobileMenuOpen(false)}>
+          <div className="bg-zinc-950 w-3/4 h-full p-6 border-r border-white/10 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <SidebarContent />
+          </div>
+        </div>
+      )}
 
-            {/* Busca */}
-            <div className="flex gap-2 mb-6">
-              <div className="relative flex-1 group/input">
-                <Search className="absolute left-3 top-3 text-zinc-500 group-focus-within/input:text-green-500 transition-colors" size={18} />
-                <input
-                  ref={searchInputRef}
-                  placeholder="Bipe ou digite o nome..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/10 rounded-xl text-sm text-white outline-none focus:border-green-500 transition-all placeholder-zinc-600"
-                />
-              </div>
-              <button
-                onClick={() => setIsScanning(true)}
-                className="p-3 bg-zinc-800/50 border border-white/10 rounded-xl text-zinc-400 hover:text-green-500 hover:border-green-500 transition-all"
-              >
-                <ScanLine size={22} />
-              </button>
+      <main className="flex-1 lg:ml-72 p-4 lg:p-10 pt-24 lg:pt-10 transition-all min-h-screen relative">
+        <div className="max-w-7xl mx-auto animate-fade-in relative z-10">
+          {loading ? (
+            <div className="flex items-center justify-center h-[50vh] flex-col gap-4">
+              <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-zinc-500 text-sm animate-pulse">Carregando dados da nuvem...</p>
             </div>
-
-            {currentItem ? (
-              <div className="animate-fade-in space-y-4">
-                {/* Preview do Produto */}
-                <div className="bg-black/60 p-4 rounded-xl border border-white/10 relative overflow-hidden group">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
-                  <div className="flex justify-between items-start relative z-10">
-                    <div>
-                      <p className="font-bold text-white text-lg leading-tight">{currentItem.name}</p>
-                      <p className="text-xs text-zinc-500 font-mono mt-1 flex items-center gap-1">
-                        <Barcode size={10} /> {currentItem.barcode || 'N/A'}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Unitário</p>
-                      <p className="text-green-400 font-black text-xl">R$ {currentItem.price.toFixed(2)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Identificação do Cliente */}
-                <div className="bg-zinc-800/30 p-4 rounded-xl border border-white/5 space-y-3">
-                  <div className="flex items-center gap-3 border-b border-white/5 pb-3">
-                    <Phone size={16} className="text-zinc-500" />
+          ) : (
+            currentView === View.DASHBOARD && (
+              !isDashboardUnlocked ? (
+                <div className="flex flex-col items-center justify-center h-[80vh]">
+                  <div className="bg-zinc-900/80 p-10 rounded-3xl border border-white/10 max-w-sm w-full text-center relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                    <Lock size={30} className="text-green-500 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-white mb-6">Área Restrita</h2>
                     <input
-                      value={customerPhone}
-                      onChange={e => setCustomerPhone(e.target.value)}
-                      placeholder="Tel Cliente (Para Pontos)"
-                      className="bg-transparent w-full text-sm outline-none text-white placeholder-zinc-600 font-medium"
+                      value={loginEmail}
+                      onChange={e => setLoginEmail(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 mb-3 text-white focus:border-green-500 outline-none transition-all"
+                      placeholder="Email"
                     />
+                    <input
+                      type="password"
+                      value={loginPass}
+                      onChange={e => setLoginPass(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleDashboardLogin()}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 mb-6 text-white focus:border-green-500 outline-none transition-all"
+                      placeholder="Senha"
+                    />
+                    <button
+                      onClick={handleDashboardLogin}
+                      disabled={isLoadingLogin}
+                      className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-all"
+                    >
+                      {isLoadingLogin ? 'Entrando...' : 'Acessar'}
+                    </button>
                   </div>
-
-                  {activeCustomer ? (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="font-bold text-white flex items-center gap-1">
-                        <User size={12} className="text-green-500" /> {(activeCustomer as any).name}
-                      </span>
-                      <div className="text-right bg-yellow-500/10 px-2 py-1 rounded-lg border border-yellow-500/20">
-                        <span className="font-bold text-yellow-500 flex items-center gap-1 justify-end">
-                          <Star size={12} className="fill-yellow-500" /> {(activeCustomer as any).points} pts
-                        </span>
-                      </div>
-                    </div>
-                  ) : cleanPhone.length > 8 ? (
-                    <p className="text-xs text-zinc-500 italic pl-7">Novo cliente será cadastrado automaticamente.</p>
-                  ) : null}
                 </div>
-
-                {/* Quantidade */}
-                <div className="flex items-center justify-between bg-black/60 p-2 rounded-xl border border-white/10">
-                  <button
-                    onClick={() => setCurrentItem({ ...currentItem, quantity: Math.max(1, currentItem.quantity - 1) })}
-                    className="p-3 hover:bg-white/10 text-zinc-400 hover:text-white rounded-lg transition-colors"
-                  >
-                    <Minus size={18} />
-                  </button>
-                  <span className="font-black text-2xl text-white w-16 text-center">{currentItem.quantity}</span>
-                  <button
-                    onClick={() => setCurrentItem({ ...currentItem, quantity: currentItem.quantity + 1 })}
-                    className="p-3 hover:bg-white/10 text-white rounded-lg transition-colors"
-                  >
-                    <Plus size={18} />
-                  </button>
+              ) : (
+                <div className="relative">
+                  <div className="absolute top-0 right-0 z-10">
+                    <button onClick={() => setIsDashboardUnlocked(false)} className="bg-black/40 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 border border-white/5 hover:bg-white/5 transition-all">
+                      <LogOut size={14} /> Bloquear
+                    </button>
+                  </div>
+                  <Dashboard transactions={transactions} products={products} expenses={expenses} />
                 </div>
+              )
+            )
+          )}
 
-                {/* Botões de Pagamento */}
-                <div className="grid grid-cols-2 gap-3">
-                  <PayBtn label="Dinheiro" icon={DollarSign} onClick={() => addLineToReport('Dinheiro')} />
-                  <PayBtn label="Pix" icon={ScanLine} onClick={() => addLineToReport('Pix')} />
-                  <PayBtn label="Débito" icon={CreditCard} onClick={() => addLineToReport('Cartão Débito')} />
-                  <PayBtn label="Crédito" icon={CreditCard} onClick={() => addLineToReport('Cartão Crédito (1x)')} />
-
-                  <button
-                    onClick={() => addLineToReport('Sara Points')}
-                    disabled={!activeCustomer || ((activeCustomer as any).points * pointsValue) < (currentItem.price * currentItem.quantity)}
-                    className={`col-span-2 py-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
-                      !activeCustomer || ((activeCustomer as any).points * pointsValue) < (currentItem.price * currentItem.quantity)
-                        ? 'bg-zinc-800/50 text-zinc-600 border-white/5 cursor-not-allowed'
-                        : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.1)]'
-                    }`}
-                  >
-                    <Star
-                      size={14}
-                      className={
-                        activeCustomer && ((activeCustomer as any).points * pointsValue) >= (currentItem.price * currentItem.quantity)
-                          ? 'fill-yellow-500'
-                          : ''
-                      }
-                    />
-                    {activeCustomer
-                      ? `Usar Pontos (Custa ${((currentItem.price * currentItem.quantity) / pointsValue).toFixed(0)} pts)`
-                      : 'Identifique o Cliente para usar pontos'}
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => setCurrentItem(null)}
-                  className="w-full py-3 text-xs font-bold text-zinc-500 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded-xl transition-all flex items-center justify-center gap-2"
-                >
-                  <X size={14} /> Cancelar seleção
-                </button>
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-zinc-700 py-10 opacity-50">
-                <Barcode size={64} className="mb-4 text-zinc-800" strokeWidth={1} />
-                <p className="text-sm font-medium">Aguardando leitura do produto...</p>
-              </div>
-            )}
-          </div>
-
-          {/* CARD DE OBSERVAÇÕES */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl p-6 rounded-2xl border border-white/10 flex-1 relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <h4 className="font-bold text-zinc-400 text-sm mb-3 flex items-center gap-2 uppercase tracking-wide">
-              <FileText size={16} className="text-yellow-500" /> Retirada / Observações
-            </h4>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              className="w-full h-24 bg-black/50 border border-white/10 rounded-xl p-3 resize-none outline-none text-sm text-white placeholder-zinc-600 focus:border-yellow-500/50 transition-all"
-              placeholder="Ex: Retirado por Fulano..."
+          {!loading && currentView === View.VOLUNTEER_REPORT && (
+            <VolunteerSales
+              products={products}
+              onSubmitReport={handleReportSubmit}
+              availableVolunteers={availableVolunteers}
+              availableServices={availableServices}
+              customers={customers}
+              pointsValue={pointsValue}
             />
-          </div>
+          )}
+
+          {!loading && currentView === View.ORDERS && (
+            <Orders products={products} onSubmitOrders={handleOrderSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />
+          )}
+
+          {!loading && currentView === View.VALIDATION && (
+            <ReportValidation
+              reports={reports}
+              orders={orders}
+              admins={admins}
+              onValidateReport={handleValidateReport}
+              onValidateOrder={handleValidateOrder}
+              onUnvalidateReport={handleUnvalidateReport}
+              onUnvalidateOrder={handleUnvalidateOrder}
+              onToggleReportItem={handleToggleReportItem}
+              onToggleOrderItem={handleToggleOrderItem}
+            />
+          )}
+
+          {!loading && currentView === View.DELIVERIES && (
+            <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />
+          )}
+
+          {!loading && currentView === View.CUSTOMERS && (
+            <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />
+          )}
+
+          {!loading && currentView === View.LOYALTY && (
+            <Loyalty
+              customers={customers}
+              pointsConfig={pointsConfig}
+              onUpdatePointsConfig={setPointsConfig}
+              onManualAddPoints={handleManualAddPoints}
+              onRedeemReward={handleRedeemReward}
+            />
+          )}
+
+          {!loading && currentView === View.INVENTORY && (
+            <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />
+          )}
+
+          {!loading && currentView === View.EXPENSES && (
+            <Expenses expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense} currentUser="Admin" />
+          )}
+
+          {!loading && currentView === View.SETTINGS && (
+            <Settings
+              volunteers={availableVolunteers}
+              services={availableServices}
+              admins={admins}
+              pointsConfig={pointsConfig}
+              pointsValue={pointsValue}
+              onUpdatePointsConfig={setPointsConfig}
+              onUpdatePointsValue={setPointsValue}
+              onAddVolunteer={addVolunteer}
+              onRemoveVolunteer={removeVolunteer}
+              onAddService={addService}
+              onRemoveService={removeService}
+              onAddAdmin={addAdmin}
+              onRemoveAdmin={removeAdmin}
+            />
+          )}
         </div>
-
-        {/* COLUNA DA DIREITA: LISTA E TOTAIS */}
-        <div className="lg:col-span-2 bg-zinc-900/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/10 flex flex-col overflow-hidden relative group">
-          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-green-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="p-5 bg-black/40 border-b border-white/10 flex justify-between items-center">
-            <h3 className="font-bold text-white text-sm uppercase tracking-wide flex items-center gap-2">
-              <ShoppingCart size={16} className="text-green-500" /> Itens do Relatório
-            </h3>
-            <span className="text-[10px] bg-green-500/10 text-green-500 px-3 py-1 rounded-full font-bold uppercase tracking-wider">
-              {reportItems.length} LINHAS
-            </span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-black/20">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-black/60 text-zinc-500 text-[10px] uppercase font-bold sticky top-0 shadow-md z-10 backdrop-blur-md">
-                <tr>
-                  <th className="p-4 tracking-wider">Qtd</th>
-                  <th className="p-4 tracking-wider">Produto</th>
-                  <th className="p-4 tracking-wider">Pagamento</th>
-                  <th className="p-4 text-right tracking-wider">Total</th>
-                  <th className="p-4"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {reportItems.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-white/5 transition-colors group">
-                    <td className="p-4 font-mono text-green-500 font-bold">{item.quantity}x</td>
-                    <td className="p-4">
-                      <span className="text-white font-medium text-base">{item.productName}</span>
-                      {item.customerPhone && (
-                        <span className="block text-[10px] text-zinc-400 flex items-center gap-1 mt-1">
-                          <User size={10} className="text-green-500" /> Cliente identificado
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wide border ${
-                          item.paymentMethod === 'Sara Points'
-                            ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                            : 'bg-zinc-800/50 text-zinc-300 border-white/10'
-                        }`}
-                      >
-                        {item.paymentMethod}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right font-black text-white text-base">R$ {item.total.toFixed(2)}</td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => setReportItems(prev => prev.filter((_, i) => i !== idx))}
-                        className="text-zinc-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/10 rounded-lg"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {reportItems.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-64 text-zinc-600">
-                <ShoppingBag size={48} className="mb-4 text-zinc-800" strokeWidth={1} />
-                <p className="text-sm font-medium">Nenhum item adicionado ainda.</p>
-              </div>
-            )}
-          </div>
-
-          {/* RODAPÉ DO RELATÓRIO */}
-          <div className="p-6 border-t border-white/10 bg-black/40 backdrop-blur-xl">
-            <div className="flex justify-between items-end mb-6">
-              <div className="text-xs text-zinc-400 font-medium space-y-2">
-                <p className="flex items-center gap-2">
-                  <ScanLine size={14} className="text-green-500" /> Total Pix:{' '}
-                  <span className="text-white font-bold ml-auto">
-                    R$ {reportItems.filter(i => i.paymentMethod === 'Pix').reduce((a, b) => a + b.total, 0).toFixed(2)}
-                  </span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <DollarSign size={14} className="text-green-500" /> Total Dinheiro:{' '}
-                  <span className="text-white font-bold ml-auto">
-                    R$ {reportItems.filter(i => i.paymentMethod === 'Dinheiro').reduce((a, b) => a + b.total, 0).toFixed(2)}
-                  </span>
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest mb-1">Total Geral (Financeiro)</p>
-                <p className="text-4xl font-black text-white tracking-tight leading-none">R$ {totalGeral.toFixed(2)}</p>
-              </div>
-            </div>
-
-            <button
-              onClick={handleFinalizeReport}
-              className="w-full bg-gradient-to-br from-green-600 to-green-700 text-white py-4 rounded-xl font-bold uppercase tracking-widest hover:from-green-500 hover:to-green-600 shadow-lg shadow-green-900/30 flex justify-center items-center gap-3 transition-all transform active:scale-[0.99] text-sm"
-            >
-              <Save size={20} /> Finalizar e Enviar para Validação
-            </button>
-          </div>
-        </div>
-      </div>
+      </main>
     </div>
   );
 };
 
-const PayBtn = ({ label, icon: Icon, onClick }: { label: string; icon: any; onClick: () => void }) => (
-  <button
-    onClick={onClick}
-    className="bg-zinc-800/50 border border-white/5 py-3 rounded-xl text-xs font-bold text-zinc-300 hover:bg-green-600 hover:text-white hover:border-green-600 transition-all flex items-center justify-center gap-2 group"
-  >
-    <Icon size={16} className="text-zinc-500 group-hover:text-white transition-colors" /> {label}
-  </button>
-);
+// --- PRINCIPAL (SELETOR DE UNIDADE) ---
+const App: React.FC = () => {
+  const [units, setUnits] = useState<RegionalUnit[]>([]);
+  const [selectedUnit, setSelectedUnit] = useState<RegionalUnit | null>(null);
+  const [loadingUnits, setLoadingUnits] = useState(true);
+
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchUnits = async () => {
+      setLoadingUnits(true);
+      const { data, error } = await supabase.from('units').select('*');
+      if (data) setUnits(data as any);
+      if (error) console.error('Erro ao buscar regionais:', error.message);
+      setLoadingUnits(false);
+    };
+    fetchUnits();
+
+    window.addEventListener('beforeinstallprompt', (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') setDeferredPrompt(null);
+  };
+
+  const [loginModalUnit, setLoginModalUnit] = useState<RegionalUnit | null>(null);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [newUnitName, setNewUnitName] = useState('');
+  const [newUnitPass, setNewUnitPass] = useState('');
+
+  const handleConfirmLogin = () => {
+    if (loginModalUnit && loginPassword === loginModalUnit.password) {
+      setSelectedUnit(loginModalUnit);
+      setLoginModalUnit(null);
+    } else {
+      alert('Senha incorreta!');
+    }
+  };
+
+  const handleCreateUnit = async () => {
+    if (!newUnitName || !newUnitPass) { alert('Preencha todos os campos!'); return; }
+    const newId = newUnitName.toLowerCase().replace(/\s+/g, '_');
+
+    const { data, error } = await supabase.from('units').insert([{ id: newId, name: newUnitName, password: newUnitPass, color: 'green' }]).select();
+    if (error) {
+      alert('Erro: ' + error.message);
+    } else if (data) {
+      setUnits(prev => [...prev, data[0] as any]);
+      setAddModalOpen(false); setNewUnitName(''); setNewUnitPass('');
+      alert(`Regional ${newUnitName} criada com sucesso!`);
+    }
+  };
+
+  const handleDeleteUnit = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const senha = window.prompt('Para confirmar, digite a senha MESTRE para apagar:');
+    if (senha === '123') {
+      await supabase.from('units').delete().eq('id', id);
+      setUnits(prev => prev.filter(u => u.id !== id));
+    } else if (senha) {
+      alert('Senha incorreta.');
+    }
+  };
+
+  if (selectedUnit) {
+    return <StoreSystem key={selectedUnit.id} unitId={selectedUnit.id} unitName={selectedUnit.name} onLogoutUnit={() => setSelectedUnit(null)} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-green-900/20 via-black to-black"></div>
+
+      <div className="relative z-10 w-full max-w-5xl text-center">
+        <div className="mb-12 animate-fade-in-up">
+          <img src="/logo.png" alt="Sara Store" className="w-32 h-32 object-contain mx-auto mb-6 drop-shadow-[0_0_25px_rgba(34,197,94,0.4)]" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2">
+            SARA <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600">REGIONAL</span>
+          </h1>
+          <p className="text-zinc-400 text-lg mb-6">Selecione sua unidade para acessar o sistema</p>
+
+          {deferredPrompt && (
+            <button onClick={handleInstallClick} className="bg-zinc-800 text-white px-6 py-2 rounded-full font-bold text-sm flex items-center gap-2 mx-auto hover:bg-green-600 transition-all shadow-lg animate-bounce">
+              <Download size={16} /> Instalar Aplicativo
+            </button>
+          )}
+        </div>
+
+        {loadingUnits ? (
+          <div className="flex flex-col items-center gap-2 text-zinc-500 animate-pulse">
+            <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-xs">Buscando unidades...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+            {units.map((unit) => (
+              <button
+                key={unit.id}
+                onClick={() => { setLoginModalUnit(unit); setLoginPassword(''); }}
+                className="group relative bg-zinc-900/50 hover:bg-zinc-800 backdrop-blur-xl border border-zinc-800 hover:border-green-500/50 rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-green-900/20 flex flex-col items-center gap-4 text-left"
+              >
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div onClick={(e) => handleDeleteUnit(e, unit.id)} className="p-2 hover:bg-red-500/20 text-zinc-600 hover:text-red-500 rounded-full transition-colors">
+                    <Trash2 size={14} />
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold bg-zinc-950 border border-zinc-800 group-hover:border-green-500 group-hover:text-green-400 transition-colors shadow-lg">
+                  <MapPin size={20} className="text-zinc-500 group-hover:text-green-500 transition-colors" />
+                </div>
+                <div className="relative z-10">
+                  <h3 className="text-white font-bold text-lg group-hover:text-green-400 transition-colors">{unit.name}</h3>
+                </div>
+              </button>
+            ))}
+
+            <button onClick={() => setAddModalOpen(true)} className="group relative bg-zinc-950/30 hover:bg-zinc-900 border border-dashed border-zinc-800 hover:border-zinc-600 rounded-2xl p-6 transition-all flex flex-col items-center justify-center gap-4 text-center min-h-[160px]">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-zinc-900 group-hover:bg-zinc-800 transition-colors">
+                <Plus size={24} className="text-zinc-500 group-hover:text-white" />
+              </div>
+              <p className="text-zinc-500 font-bold text-sm group-hover:text-white">Adicionar Regional</p>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loginModalUnit && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden animate-fade-in">
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-green-500"></div>
+            <h2 className="text-2xl font-bold text-white mb-2">{loginModalUnit.name}</h2>
+            <p className="text-zinc-500 text-sm mb-6">Digite a senha da unidade para entrar</p>
+            <input
+              autoFocus
+              type="password"
+              value={loginPassword}
+              onChange={e => setLoginPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleConfirmLogin()}
+              className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white text-center tracking-widest outline-none focus:border-green-500 mb-4"
+              placeholder="••••"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setLoginModalUnit(null)} className="flex-1 py-3 text-zinc-500 hover:text-white font-bold transition-colors">Cancelar</button>
+              <button onClick={handleConfirmLogin} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-colors">Acessar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden animate-fade-in">
+            <button onClick={() => setAddModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X size={20} /></button>
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center justify-center gap-2"><Plus size={20} className="text-green-500" /> Nova Regional</h2>
+            <div className="space-y-4 text-left">
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Nome da Regional</label>
+                <input value={newUnitName} onChange={e => setNewUnitName(e.target.value)} className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-green-500" placeholder="Ex: Bangu" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Senha de Acesso</label>
+                <input type="password" value={newUnitPass} onChange={e => setNewUnitPass(e.target.value)} className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-green-500" placeholder="Crie uma senha segura" />
+              </div>
+              <button onClick={handleCreateUnit} className="w-full bg-white text-black py-3 rounded-xl font-bold hover:bg-zinc-200 transition-colors mt-2">Criar Unidade</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
