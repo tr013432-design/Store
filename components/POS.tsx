@@ -1,427 +1,429 @@
-import React, { useMemo, useState } from 'react';
-import { Product, CartItem, Category } from '../types';
-import { Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, QrCode, Phone } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Customer, Category } from '../types';
+import { Trophy, Search, Gift, Phone, Plus, Star, AlertCircle, Settings, Save } from 'lucide-react';
 
-interface POSProps {
-  products: Product[];
-  onCompleteSale: (items: CartItem[], total: number, method: 'Dinheiro' | 'Cartão' | 'Pix') => void;
+interface LoyaltyProps {
+  customers: Customer[];
+  pointsConfig?: Record<string, number>;
+  onUpdatePointsConfig?: (config: Record<string, number>) => void;
+  onManualAddPoints: (phone: string, points: number) => void;
+  onRedeemReward: (phone: string, cost: number) => void;
 }
 
-type LoyaltyConfig =
-  | {
-      enabled?: boolean;
-      defaultPointsPerItem?: number;
-      pointsByCategory?: Record<string, number>;
-      rules?: Array<{ category: string; points: number }>;
-      categories?: Array<{ category: string; pointsPerItem: number }>;
-    }
-  | Record<string, number>;
-
-const LOYALTY_CUSTOMERS_KEY = 'customers';
 const LOYALTY_POINTS_BY_PHONE_KEY = 'loyalty_points_by_phone_v1';
+const LOYALTY_CONFIG_KEY = 'loyaltyPointsByCategory';
 
-// tenta achar regras em várias chaves (pra casar com qualquer implementação que você já tenha)
-const LOYALTY_CONFIG_KEYS = ['loyaltyPointsByCategory', 'loyalty_rules', 'loyaltySettings', 'sara_points_rules', 'loyaltyProgram'];
+const digitsOnly = (v: any) => String(v ?? '').replace(/\D/g, '');
+const safeNumber = (v: any, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
 
-function digitsOnly(v: string) {
-  return (v ?? '').replace(/\D/g, '');
-}
-
-function loadLoyaltyConfig(): { enabled: boolean; defaultPointsPerItem: number; pointsByCategory: Record<string, number> } {
-  let parsed: any = null;
-
-  for (const k of LOYALTY_CONFIG_KEYS) {
-    const raw = localStorage.getItem(k);
-    if (!raw) continue;
-
-    try {
-      parsed = JSON.parse(raw);
-      if (parsed) break;
-    } catch {
-      // ignora e tenta próxima
-    }
-  }
-
-  // padrão: não travar o sistema — se não houver regra salva, dá 1 ponto por item (você pode ajustar)
-  const base = {
-    enabled: true,
-    defaultPointsPerItem: 1,
-    pointsByCategory: {} as Record<string, number>,
-  };
-
-  if (!parsed) return base;
-
-  // caso seja um objeto simples { "Categoria": 10, ... }
-  if (typeof parsed === 'object' && !Array.isArray(parsed) && !('pointsByCategory' in parsed) && !('rules' in parsed) && !('categories' in parsed)) {
-    return {
-      enabled: true,
-      defaultPointsPerItem: 0,
-      pointsByCategory: parsed as Record<string, number>,
-    };
-  }
-
-  // caso seja um config mais completo
-  const enabled = parsed.enabled !== false;
-  const defaultPointsPerItem = Number.isFinite(Number(parsed.defaultPointsPerItem)) ? Number(parsed.defaultPointsPerItem) : base.defaultPointsPerItem;
-
-  let map: Record<string, number> = {};
-  if (parsed.pointsByCategory && typeof parsed.pointsByCategory === 'object') {
-    map = parsed.pointsByCategory;
-  } else if (Array.isArray(parsed.rules)) {
-    for (const r of parsed.rules) {
-      if (!r?.category) continue;
-      const pts = Number(r.points);
-      if (Number.isFinite(pts)) map[String(r.category)] = pts;
-    }
-  } else if (Array.isArray(parsed.categories)) {
-    for (const r of parsed.categories) {
-      if (!r?.category) continue;
-      const pts = Number(r.pointsPerItem);
-      if (Number.isFinite(pts)) map[String(r.category)] = pts;
-    }
-  }
-
-  return { enabled, defaultPointsPerItem, pointsByCategory: map };
-}
-
-function computeEarnedPoints(cart: CartItem[]): number {
-  const cfg = loadLoyaltyConfig();
-  if (!cfg.enabled) return 0;
-
-  const pointsByCategory = cfg.pointsByCategory || {};
-  const defaultPoints = cfg.defaultPointsPerItem ?? 0;
-
-  let points = 0;
-
-  for (const item of cart) {
-    const catKey = String(item.category ?? '');
-    const ptsPerItem = Number.isFinite(Number(pointsByCategory[catKey]))
-      ? Number(pointsByCategory[catKey])
-      : defaultPoints;
-
-    if (ptsPerItem > 0) {
-      points += ptsPerItem * Number(item.quantity ?? 1);
-    }
-  }
-
-  return Math.max(0, Math.trunc(points));
-}
-
-function applyLoyaltyPoints(customerPhoneRaw: string, cart: CartItem[]) {
-  const phone = digitsOnly(customerPhoneRaw);
-
-  if (!phone) return { applied: false, points: 0, reason: 'no_phone' };
-
-  const earned = computeEarnedPoints(cart);
-  if (earned <= 0) return { applied: false, points: 0, reason: 'no_points' };
-
-  // 1) fallback: mapa simples por telefone
+const loadPhonePointsMap = (): Record<string, number> => {
   try {
     const raw = localStorage.getItem(LOYALTY_POINTS_BY_PHONE_KEY);
-    const map = raw ? JSON.parse(raw) : {};
-    const current = Number(map?.[phone] ?? 0);
-    map[phone] = current + earned;
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const savePhonePointsMap = (map: Record<string, number>) => {
+  try {
     localStorage.setItem(LOYALTY_POINTS_BY_PHONE_KEY, JSON.stringify(map));
   } catch {
-    // ignora
+    // ignore
   }
+};
 
-  // 2) se existir "customers" no storage, tenta somar no cliente certo
+const loadPointsConfigLocal = (): Record<string, number> => {
   try {
-    const rawCustomers = localStorage.getItem(LOYALTY_CUSTOMERS_KEY);
-    if (rawCustomers) {
-      const customers = JSON.parse(rawCustomers);
-
-      if (Array.isArray(customers)) {
-        const normalizedPhone = phone;
-
-        const idx = customers.findIndex((c: any) => {
-          const p =
-            digitsOnly(String(c?.phone ?? '')) ||
-            digitsOnly(String(c?.customerPhone ?? '')) ||
-            digitsOnly(String(c?.tel ?? '')) ||
-            digitsOnly(String(c?.telefone ?? ''));
-          return p === normalizedPhone;
-        });
-
-        if (idx >= 0) {
-          const c = customers[idx];
-
-          // tenta manter compatível com qualquer nome de campo existente
-          const field =
-            ('points' in c && 'points') ||
-            ('loyaltyPoints' in c && 'loyaltyPoints') ||
-            ('saraPoints' in c && 'saraPoints') ||
-            ('pontos' in c && 'pontos') ||
-            'points';
-
-          const current = Number(c?.[field] ?? 0);
-          const nextCustomer = { ...c, [field]: (Number.isFinite(current) ? current : 0) + earned };
-
-          const next = customers.slice();
-          next[idx] = nextCustomer;
-
-          localStorage.setItem(LOYALTY_CUSTOMERS_KEY, JSON.stringify(next));
-        }
-      }
-    }
+    const raw = localStorage.getItem(LOYALTY_CONFIG_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    // ignora
+    return {};
   }
+};
 
-  return { applied: true, points: earned, reason: 'ok' };
+const sanitizeConfig = (cfg: Record<string, number>) => {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(cfg || {})) {
+    out[String(k)] = Math.max(0, Math.trunc(safeNumber(v, 0)));
+  }
+  return out;
+};
+
+// ✅ pega o telefone real do cliente mesmo se id for UUID
+function getCustomerPhone(c: Customer): string {
+  const anyC = c as any;
+  return (
+    digitsOnly(anyC.phone) ||
+    digitsOnly(anyC.customerPhone) ||
+    digitsOnly(anyC.tel) ||
+    digitsOnly(anyC.telefone) ||
+    digitsOnly(anyC.celular) ||
+    digitsOnly(anyC.whatsapp) ||
+    digitsOnly(c.id)
+  );
 }
 
-export const POS: React.FC<POSProps> = ({ products, onCompleteSale }) => {
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
+function getCustomerDisplayPhone(c: Customer): string {
+  const anyC = c as any;
+  return String(anyC.phone ?? anyC.customerPhone ?? anyC.tel ?? anyC.telefone ?? anyC.celular ?? anyC.whatsapp ?? c.id ?? '');
+}
+
+export const Loyalty: React.FC<LoyaltyProps> = ({
+  customers,
+  pointsConfig,
+  onUpdatePointsConfig,
+  onManualAddPoints,
+  onRedeemReward,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [customerPhone, setCustomerPhone] = useState<string>(''); // ✅ tel do cliente para pontos
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
-  const categories = useMemo(() => ['Todos', ...Object.values(Category)], []);
+  const [showConfig, setShowConfig] = useState(false);
+  const [tempConfig, setTempConfig] = useState<Record<string, number>>({});
 
-  const addToCart = (product: Product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
-      if (existing) {
-        return prev.map(item => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
-      }
-      return [...prev, { ...product, quantity: 1 }];
-    });
-  };
+  const [phonePointsMap, setPhonePointsMap] = useState<Record<string, number>>({});
 
-  const updateQuantity = (id: string, delta: number) => {
-    setCart(prev =>
-      prev
-        .map(item => {
-          if (item.id === id) {
-            return { ...item, quantity: Math.max(0, Math.trunc(item.quantity + delta)) };
-          }
-          return item;
-        })
-        .filter(item => item.quantity > 0)
-    );
-  };
+  useEffect(() => {
+    setPhonePointsMap(loadPhonePointsMap());
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id));
-  };
+    const fromProps = pointsConfig && typeof pointsConfig === 'object' ? pointsConfig : null;
+    const fromLocal = loadPointsConfigLocal();
+    setTempConfig(sanitizeConfig(fromProps || fromLocal || {}));
+  }, []);
 
-  const cartTotal = useMemo(() => cart.reduce((acc, item) => acc + item.price * item.quantity, 0), [cart]);
-
-  const filteredProducts = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-
-    return products.filter(p => {
-      const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-      const matchesSearch = p.name.toLowerCase().includes(term);
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, selectedCategory, searchTerm]);
-
-  const handleCheckout = (method: 'Dinheiro' | 'Cartão' | 'Pix') => {
-    if (cart.length === 0) return;
-
-    // ✅ aplica fidelidade ANTES de limpar carrinho
-    const loyalty = applyLoyaltyPoints(customerPhone, cart);
-
-    // finaliza venda no fluxo existente
-    onCompleteSale(cart, cartTotal, method);
-
-    setCart([]);
-
-    // opcional: manter telefone para próximas vendas (se quiser limpar, descomenta)
-    // setCustomerPhone('');
-
-    if (loyalty.applied) {
-      alert(`Venda realizada com sucesso! ✅\n+${loyalty.points} pontos adicionados ao cliente.`);
-    } else {
-      // se não aplicou por falta de telefone, avisa (sem travar venda)
-      if (loyalty.reason === 'no_phone') {
-        alert('Venda realizada com sucesso! ✅\n(Cliente sem telefone informado — não foi possível aplicar pontos.)');
-      } else {
-        alert('Venda realizada com sucesso! ✅');
-      }
+  useEffect(() => {
+    if (pointsConfig && typeof pointsConfig === 'object') {
+      setTempConfig(sanitizeConfig(pointsConfig));
     }
+  }, [pointsConfig]);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LOYALTY_POINTS_BY_PHONE_KEY) setPhonePointsMap(loadPhonePointsMap());
+      if (e.key === LOYALTY_CONFIG_KEY && !pointsConfig) setTempConfig(loadPointsConfigLocal());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [pointsConfig]);
+
+  // ✅ merge: tenta casar pontos pelo telefone e também pelo id (se id for UUID e POS salvou no map)
+  const customersMerged = useMemo(() => {
+    const map = phonePointsMap || {};
+
+    return customers.map(c => {
+      const phoneKey = getCustomerPhone(c); // dígitos
+      const idKey = String(c.id ?? '');
+
+      const mapPts = Math.max(safeNumber(map[phoneKey], 0), safeNumber(map[idKey], 0));
+      const basePts = safeNumber((c as any).points, 0);
+
+      const mergedPoints = basePts === 0 && mapPts > 0 ? mapPts : Math.max(basePts, mapPts);
+
+      return { ...c, points: mergedPoints } as Customer;
+    });
+  }, [customers, phonePointsMap]);
+
+  const filteredCustomers = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    const termDigits = digitsOnly(term);
+
+    return customersMerged
+      .filter(c => {
+        const name = String(c.name ?? '').toLowerCase();
+        const id = String(c.id ?? '').toLowerCase();
+        const phoneShow = getCustomerDisplayPhone(c).toLowerCase();
+        const phoneKey = getCustomerPhone(c);
+
+        if (!term) return true;
+
+        return (
+          name.includes(term) ||
+          id.includes(term) ||
+          phoneShow.includes(term) ||
+          (termDigits && phoneKey.includes(termDigits))
+        );
+      })
+      .sort((a, b) => safeNumber((b as any).points, 0) - safeNumber((a as any).points, 0));
+  }, [customersMerged, searchTerm]);
+
+  const selectedCustomer = useMemo(() => {
+    if (!selectedCustomerId) return null;
+    return customersMerged.find(c => String(c.id) === String(selectedCustomerId)) || null;
+  }, [customersMerged, selectedCustomerId]);
+
+  const rewardsAvailable = selectedCustomer ? Math.floor(safeNumber((selectedCustomer as any).points, 0) / 100) : 0;
+  const pointsToNext = selectedCustomer ? safeNumber((selectedCustomer as any).points, 0) % 100 : 0;
+  const missingPoints = 100 - pointsToNext;
+
+  const handleSaveConfig = () => {
+    const cleaned = sanitizeConfig(tempConfig);
+
+    try {
+      localStorage.setItem(LOYALTY_CONFIG_KEY, JSON.stringify(cleaned));
+    } catch {
+      // ignore
+    }
+
+    if (onUpdatePointsConfig) onUpdatePointsConfig(cleaned);
+
+    setShowConfig(false);
+    alert('Regras de pontuação atualizadas!');
+  };
+
+  const handleManualAdd = (customer: Customer, points: number) => {
+    const phoneKey = getCustomerPhone(customer);
+    if (!phoneKey) return;
+
+    const p = Math.trunc(safeNumber(points, 0));
+    if (!Number.isFinite(p) || p === 0) return;
+
+    // atualiza map pra refletir na tela
+    const nextMap = { ...(phonePointsMap || {}) };
+    nextMap[phoneKey] = safeNumber(nextMap[phoneKey], 0) + p;
+    // também salva por id se id for UUID (pra não “sumir”)
+    nextMap[String(customer.id)] = Math.max(safeNumber(nextMap[String(customer.id)], 0), nextMap[phoneKey]);
+
+    setPhonePointsMap(nextMap);
+    savePhonePointsMap(nextMap);
+
+    // chama handler do app usando telefone
+    onManualAddPoints(phoneKey, p);
+  };
+
+  const handleRedeem = (customer: Customer, cost: number) => {
+    const phoneKey = getCustomerPhone(customer);
+    if (!phoneKey) return;
+
+    const c = Math.max(0, Math.trunc(safeNumber(cost, 0)));
+    if (c <= 0) return;
+
+    // atualiza map local (visual)
+    const nextMap = { ...(phonePointsMap || {}) };
+    nextMap[phoneKey] = Math.max(0, safeNumber(nextMap[phoneKey], 0) - c);
+    nextMap[String(customer.id)] = Math.max(safeNumber(nextMap[String(customer.id)], 0) - c, 0);
+
+    setPhonePointsMap(nextMap);
+    savePhonePointsMap(nextMap);
+
+    onRedeemReward(phoneKey, c);
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-2rem)] gap-6">
-      {/* Product Grid */}
-      <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-center">
-          <div className="flex gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                  selectedCategory === cat
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          <input
-            type="text"
-            placeholder="Buscar produto..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full sm:w-64 px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+    <div className="space-y-6 pb-20 animate-fade-in">
+      {/* CABEÇALHO */}
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-zinc-800 pb-6">
+        <div>
+          <h2 className="text-3xl font-black text-white tracking-tight uppercase flex items-center gap-2">
+            <Star className="text-yellow-500" fill="#eab308" /> Sara Points
+          </h2>
+          <p className="text-zinc-500 text-sm mt-1 font-bold tracking-widest uppercase">Programa de Fidelidade</p>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-20 lg:pb-0">
-          {filteredProducts.map(product => (
-            <div
-              key={product.id}
-              onClick={() => addToCart(product)}
-              className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 cursor-pointer hover:shadow-md transition-all hover:border-indigo-200 group flex flex-col"
-            >
-              <div className="aspect-square bg-slate-100 rounded-lg mb-3 overflow-hidden relative">
-                {product.imageUrl ? (
-                  <img
-                    src={product.imageUrl}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
-                    Sem imagem
-                  </div>
-                )}
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className={`p-3 rounded-xl border transition-colors ${
+              showConfig
+                ? 'bg-indigo-600 text-white border-indigo-500'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Settings size={20} />
+          </button>
 
-                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded-md text-xs font-bold text-slate-700 shadow-sm">
-                  R$ {product.price.toFixed(2)}
-                </div>
-              </div>
-
-              <h3 className="font-semibold text-slate-800 text-sm mb-1 leading-tight">{product.name}</h3>
-              <p className="text-xs text-slate-500 mb-auto">{product.category}</p>
-
-              <div className="mt-3 pt-3 border-t border-slate-50 flex justify-between items-center">
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded ${
-                    product.stock < 10 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
-                  }`}
-                >
-                  {product.stock} un
-                </span>
-                <div className="bg-indigo-50 text-indigo-600 p-1.5 rounded-full hover:bg-indigo-600 hover:text-white transition-colors">
-                  <Plus size={14} />
-                </div>
-              </div>
-            </div>
-          ))}
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-4 top-3.5 text-zinc-500" size={20} />
+            <input
+              placeholder="Buscar Cliente..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white outline-none focus:border-yellow-500 transition-colors"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Cart Sidebar */}
-      <div className="w-full lg:w-96 bg-white rounded-2xl shadow-lg border border-slate-100 flex flex-col h-[50vh] lg:h-auto fixed bottom-0 lg:static left-0 z-50 lg:z-0">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 rounded-t-2xl lg:bg-white">
-          <div className="flex items-center gap-2 text-slate-800">
-            <ShoppingCart className="text-indigo-600" />
-            <h2 className="font-bold text-lg">Carrinho</h2>
-          </div>
-          <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs font-bold">
-            {cart.reduce((acc, i) => acc + i.quantity, 0)} itens
-          </span>
-        </div>
+      {/* CONFIG */}
+      {showConfig && (
+        <div className="bg-zinc-900 border border-indigo-500/30 p-6 rounded-2xl animate-fade-in mb-6">
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Settings size={18} className="text-indigo-500" /> Configurar Pontos por Categoria
+          </h3>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
-              <ShoppingCart size={48} className="opacity-20" />
-              <p className="text-sm">Seu carrinho está vazio</p>
-            </div>
-          ) : (
-            cart.map(item => (
-              <div key={item.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-slate-800 truncate text-sm">{item.name}</h4>
-                  <p className="text-xs text-slate-500">R$ {item.price.toFixed(2)} un</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {Object.values(Category).map(cat => (
+              <div key={cat} className="bg-black p-3 rounded-xl border border-zinc-800">
+                <label className="text-[10px] text-zinc-500 font-bold uppercase block mb-2 h-8">{cat}</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={tempConfig[cat] || 0}
+                    onChange={e => setTempConfig({ ...tempConfig, [cat]: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-zinc-900 text-white font-bold border border-zinc-700 rounded p-2 text-center outline-none focus:border-indigo-500"
+                  />
+                  <span className="text-xs text-zinc-500">pts</span>
                 </div>
+              </div>
+            ))}
+          </div>
 
-                <div className="flex items-center gap-3 ml-2">
-                  <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 h-8">
-                    <button
-                      onClick={() => updateQuantity(item.id, -1)}
-                      className="px-2 h-full hover:bg-slate-50 text-slate-600 rounded-l-lg transition-colors"
-                    >
-                      <Minus size={12} />
-                    </button>
+          <button
+            onClick={handleSaveConfig}
+            className="mt-4 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 transition-colors"
+          >
+            <Save size={18} /> Salvar Regras
+          </button>
+        </div>
+      )}
 
-                    <span className="w-8 text-center text-sm font-medium text-slate-700">{item.quantity}</span>
-
-                    <button
-                      onClick={() => updateQuantity(item.id, 1)}
-                      className="px-2 h-full hover:bg-slate-50 text-slate-600 rounded-r-lg transition-colors"
-                    >
-                      <Plus size={12} />
-                    </button>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LISTA */}
+        <div className="lg:col-span-2 space-y-4">
+          {filteredCustomers.length === 0 ? (
+            <div className="text-center py-10 text-zinc-500">Nenhum cliente encontrado.</div>
+          ) : (
+            filteredCustomers.map(customer => (
+              <div
+                key={customer.id}
+                onClick={() => setSelectedCustomerId(String(customer.id))}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${
+                  selectedCustomer?.id === customer.id ? 'bg-zinc-800 border-yellow-500/50' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                }`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-zinc-800 to-black border border-zinc-700 flex items-center justify-center font-bold text-zinc-300">
+                    {String(customer.name ?? '').substring(0, 2).toUpperCase()}
                   </div>
-
-                  <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600 p-1">
-                    <Trash2 size={16} />
-                  </button>
+                  <div>
+                    <h3 className="font-bold text-white text-lg">{customer.name}</h3>
+                    <p className="text-xs text-zinc-500 flex items-center gap-1">
+                      <Phone size={10} /> {getCustomerDisplayPhone(customer)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`text-2xl font-black ${safeNumber((customer as any).points, 0) < 0 ? 'text-red-500' : 'text-yellow-500'}`}>
+                    {safeNumber((customer as any).points, 0)}
+                  </p>
+                  <p className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Pontos</p>
                 </div>
               </div>
             ))
           )}
         </div>
 
-        <div className="p-5 bg-slate-50 rounded-b-2xl border-t border-slate-100 space-y-4">
-          {/* ✅ Telefone para pontos */}
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
-            <Phone size={18} className="text-slate-500" />
-            <input
-              value={customerPhone}
-              onChange={e => setCustomerPhone(e.target.value)}
-              placeholder="Tel Cliente (para pontos)"
-              className="w-full outline-none text-sm text-slate-800 placeholder-slate-400"
-              inputMode="tel"
-            />
-          </div>
+        {/* DETALHES */}
+        <div className="lg:col-span-1">
+          {selectedCustomer ? (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
+              <div className="text-center mb-6">
+                <div className="w-20 h-20 mx-auto rounded-full bg-yellow-500/10 flex items-center justify-center mb-3 relative">
+                  <Trophy size={40} className="text-yellow-500" />
+                  {rewardsAvailable > 0 && (
+                    <div className="absolute -top-2 -right-2 bg-red-600 text-white font-bold w-8 h-8 flex items-center justify-center rounded-full border-4 border-zinc-900 shadow-lg">
+                      {rewardsAvailable}
+                    </div>
+                  )}
+                </div>
+                <h2 className="text-2xl font-bold text-white">{selectedCustomer.name}</h2>
+                {rewardsAvailable > 0 ? (
+                  <p className="text-yellow-400 font-bold text-sm animate-pulse">🎉 {rewardsAvailable} PRÊMIO(S) DISPONÍVEL(IS)!</p>
+                ) : (
+                  <p className="text-zinc-500 text-sm">Continue comprando para ganhar!</p>
+                )}
+              </div>
 
-          <div className="flex justify-between items-center">
-            <span className="text-slate-500 font-medium">Total a Pagar</span>
-            <span className="text-2xl font-bold text-slate-900">R$ {cartTotal.toFixed(2)}</span>
-          </div>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-black p-3 rounded-xl border border-zinc-800 text-center">
+                  <p className="text-xs text-zinc-500 uppercase">Total Gasto</p>
+                  <p className="font-bold text-white">R$ {safeNumber((selectedCustomer as any).totalSpent, 0).toFixed(2)}</p>
+                </div>
+                <div className="bg-black p-3 rounded-xl border border-zinc-800 text-center">
+                  <p className="text-xs text-zinc-500 uppercase">Última Compra</p>
+                  <p className="font-bold text-white">
+                    (selectedCustomer as any).lastPurchase ? new Date((selectedCustomer as any).lastPurchase).toLocaleDateString() : '-'
+                  </p>
+                </div>
+              </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => handleCheckout('Dinheiro')}
-              disabled={cart.length === 0}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              <Banknote size={20} />
-              <span className="text-xs font-medium">Dinheiro</span>
-            </button>
+              <div className="mb-6">
+                <div className="flex justify-between text-xs font-bold uppercase mb-1">
+                  <span className="text-yellow-500">Próximo Nível</span>
+                  <span className="text-zinc-400">{pointsToNext} / 100</span>
+                </div>
+                <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden relative">
+                  <div className="absolute inset-0 flex justify-between px-1">
+                    <div className="w-px h-full bg-zinc-700/50"></div>
+                    <div className="w-px h-full bg-zinc-700/50"></div>
+                    <div className="w-px h-full bg-zinc-700/50"></div>
+                  </div>
+                  <div
+                    className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 transition-all duration-500"
+                    style={{ width: `${Math.max(0, Math.min(100, pointsToNext))}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-center mt-2 text-zinc-500">
+                  Faltam <strong>{missingPoints} pontos</strong> para o próximo brinde.
+                </p>
+              </div>
 
-            <button
-              onClick={() => handleCheckout('Pix')}
-              disabled={cart.length === 0}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              <QrCode size={20} />
-              <span className="text-xs font-medium">Pix</span>
-            </button>
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    if (rewardsAvailable > 0) {
+                      if (window.confirm(`CONFIRMAR RESGATE?\n\nIsso vai descontar 100 pontos.`)) handleRedeem(selectedCustomer, 100);
+                    } else {
+                      alert(`Faltam ${missingPoints} pontos para liberar o resgate!`);
+                    }
+                  }}
+                  disabled={rewardsAvailable === 0}
+                  className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                    rewardsAvailable > 0
+                      ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] transform hover:scale-[1.02]'
+                      : 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-700'
+                  }`}
+                >
+                  <Gift size={20} className={rewardsAvailable > 0 ? 'animate-bounce' : ''} />{' '}
+                  {rewardsAvailable > 0 ? 'RESGATAR PRÊMIO (-100)' : 'SALDO INSUFICIENTE'}
+                </button>
 
-            <button
-              onClick={() => handleCheckout('Cartão')}
-              disabled={cart.length === 0}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              <CreditCard size={20} />
-              <span className="text-xs font-medium">Cartão</span>
-            </button>
-          </div>
+                {safeNumber((selectedCustomer as any).points, 0) < 0 && (
+                  <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-xl flex items-center gap-2 text-red-400 text-xs">
+                    <AlertCircle size={16} /> <span>Erro: Saldo negativo detectado.</span>
+                    <button
+                      onClick={() => handleManualAdd(selectedCustomer, Math.abs(safeNumber((selectedCustomer as any).points, 0)))}
+                      className="underline hover:text-white ml-auto"
+                    >
+                      Zerar
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    const pts = prompt('Adicionar pontos:');
+                    const p = parseInt(String(pts ?? ''), 10);
+                    if (!isNaN(p) && p !== 0) handleManualAdd(selectedCustomer, p);
+                  }}
+                  className="w-full py-3 bg-zinc-950 border border-zinc-800 text-zinc-400 rounded-xl font-bold hover:bg-zinc-900 hover:text-white flex items-center justify-center gap-2 transition-colors text-xs uppercase tracking-wider"
+                >
+                  <Plus size={16} /> Ajuste Manual
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-zinc-500 border-2 border-dashed border-zinc-800 rounded-2xl p-8">
+              <Search size={48} className="mb-4 opacity-20" />
+              <p>Selecione um cliente para ver detalhes</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
