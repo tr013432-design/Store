@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import { supabase } from '../supabaseClient';
 import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Expense } from './types';
 import { Dashboard } from './components/Dashboard';
 import { VolunteerSales } from './components/VolunteerSales';
