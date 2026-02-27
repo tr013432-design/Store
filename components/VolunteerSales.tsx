@@ -10,6 +10,27 @@ import { Deliveries } from './Deliveries';
 import { Loyalty } from './Loyalty';
 import { Customers } from './Customers';
 import { Expenses } from './Expenses';
+import {
+  LayoutDashboard,
+  Package,
+  Menu,
+  CheckCircle,
+  ShoppingBag,
+  Settings as SettingsIcon,
+  Lock,
+  LogOut,
+  Truck,
+  Star,
+  Users,
+  TrendingDown,
+  Store,
+  ChevronRight,
+  MapPin,
+  Plus,
+  X,
+  Trash2,
+  Download
+} from 'lucide-react';
   LayoutDashboard, Package, Menu, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, LogOut, Truck,
   Star, Users, TrendingDown, Store, ChevronRight, MapPin, Plus, X, Trash2, Download
 } from 'lucide-react';
