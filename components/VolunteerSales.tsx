@@ -31,10 +31,6 @@ import {
   Trash2,
   Download
 } from 'lucide-react';
-  LayoutDashboard, Package, Menu, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, LogOut, Truck,
-  Star, Users, TrendingDown, Store, ChevronRight, MapPin, Plus, X, Trash2, Download
-} from 'lucide-react';
-
 // --- TIPOS ---
 interface RegionalUnit {
   id: string;
