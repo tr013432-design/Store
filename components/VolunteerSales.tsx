@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Expense } from './types';
-import { Dashboard } from './components/Dashboard';
-import { VolunteerSales } from './components/VolunteerSales';
-import { ReportValidation } from './components/ReportValidation';
-import { Orders } from './components/Orders';
-import { Inventory } from './components/Inventory';
-import { Settings } from './components/Settings';
-import { Deliveries } from './components/Deliveries';
-import { Loyalty } from './components/Loyalty';
-import { Customers } from './components/Customers';
-import { Expenses } from './components/Expenses';
-import {
+import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Expense } from '../types';
+import { Dashboard } from './Dashboard';
+import { ReportValidation } from './ReportValidation';
+import { Orders } from './Orders';
+import { Inventory } from './Inventory';
+import { Settings } from './Settings';
+import { Deliveries } from './Deliveries';
+import { Loyalty } from './Loyalty';
+import { Customers } from './Customers';
+import { Expenses } from './Expenses';
   LayoutDashboard, Package, Menu, CheckCircle, ShoppingBag, Settings as SettingsIcon, Lock, LogOut, Truck,
   Star, Users, TrendingDown, Store, ChevronRight, MapPin, Plus, X, Trash2, Download
 } from 'lucide-react';
