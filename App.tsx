@@ -75,7 +75,6 @@ const safeNum = (v: any, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-// tenta puxar telefone de vários nomes possíveis (pra ser robusto)
 const extractPhoneFromAny = (obj: any): string => {
   if (!obj) return '';
   return (
@@ -98,7 +97,12 @@ const normalizeCustomerRow = (row: any): Customer => {
   return {
     ...row,
     totalSpent: row.totalSpent ?? row.total_spent ?? 0,
-    lastPurchase: row.lastPurchase ?? row.last_purchase ?? row.updated_at ?? row.created_at ?? new Date().toISOString(),
+    lastPurchase:
+      row.lastPurchase ??
+      row.last_purchase ??
+      row.updated_at ??
+      row.created_at ??
+      new Date().toISOString(),
     points: row.points ?? row.pontos ?? 0,
     phone: row.phone ?? row.telefone ?? row.customer_phone ?? row.customerPhone ?? ''
   } as Customer;
@@ -121,7 +125,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [schedules, setSchedules] = useState<VolunteerScheduleItem[]>([]);
 
-  // DADO DERIVADO (Para o Dashboard funcionar sem mudar o componente)
+  // DADO DERIVADO
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   // Configurações Locais
@@ -133,8 +137,15 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     'Outros': 1
   });
   const [pointsValue, setPointsValue] = useState<number>(0.1);
-  const [availableVolunteers, setAvailableVolunteers] = useState<string[]>(['Voluntário 1', 'Voluntário 2']);
-  const [availableServices, setAvailableServices] = useState<string[]>(['Culto da Família', 'Arena Jovem', 'Domingo']);
+  const [availableVolunteers, setAvailableVolunteers] = useState<string[]>([
+    'Voluntário 1',
+    'Voluntário 2'
+  ]);
+  const [availableServices, setAvailableServices] = useState<string[]>([
+    'Culto da Família',
+    'Arena Jovem',
+    'Domingo'
+  ]);
   const [admins, setAdmins] = useState<AdminUser[]>([
     { id: '1', name: 'Admin', email: `admin@${unitId}.com`, password: '123' }
   ]);
@@ -145,10 +156,8 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const [loginPass, setLoginPass] = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
 
-  // --- CARREGAR DADOS AO ENTRAR ---
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitId]);
 
   const fetchData = async () => {
@@ -192,39 +201,37 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     setLoading(false);
   };
 
-  // Atualiza as Transações (Dashboard) sempre que Relatórios ou Encomendas mudam
   useEffect(() => {
     const txReports = reports
-      .filter((r) => (r as any).status === 'VALIDADO')
-      .map((r) => ({
-        id: (r as any).id,
-        date: (r as any).date,
-        total: (r as any).grandTotal,
+      .filter((r: any) => r.status === 'VALIDADO')
+      .map((r: any) => ({
+        id: r.id,
+        date: r.date,
+        total: r.grandTotal,
         paymentMethod: 'Dinheiro',
-        items: (r as any).items,
-        volunteerName: (r as any).volunteerName,
-        serviceType: (r as any).serviceType
+        items: r.items,
+        volunteerName: r.volunteerName,
+        serviceType: r.serviceType
       }));
 
     const txOrders = orders
-      .filter((o) => (o as any).status === 'ENTREGUE')
-      .map((o) => ({
-        id: (o as any).id,
-        date: (o as any).date,
-        total: (o as any).grandTotal,
+      .filter((o: any) => o.status === 'ENTREGUE')
+      .map((o: any) => ({
+        id: o.id,
+        date: o.date,
+        total: o.grandTotal,
         paymentMethod: 'Dinheiro',
-        items: (o as any).items,
-        volunteerName: (o as any).volunteerName,
-        serviceType: (o as any).serviceType
+        items: o.items,
+        volunteerName: o.volunteerName,
+        serviceType: o.serviceType
       }));
 
-    setTransactions([...txReports, ...txOrders] as any);
+    setTransactions([...(txReports as any), ...(txOrders as any)] as any);
   }, [reports, orders]);
 
   // -------------------------
-  // Fidelidade (Supabase)
+  // Fidelidade
   // -------------------------
-
   const ensureCustomerByPhone = async (phoneRaw: string, nameRaw?: string) => {
     const phone = digitsOnly(phoneRaw);
     if (!phone) return null;
@@ -236,22 +243,34 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
     const { data, error } = await supabase
       .from('customers')
-      .insert([{ unit_id: unitId, phone, name, points: 0, totalSpent: 0, lastPurchase: new Date().toISOString() }])
+      .insert([
+        {
+          unit_id: unitId,
+          phone,
+          name,
+          points: 0,
+          totalSpent: 0,
+          lastPurchase: new Date().toISOString()
+        }
+      ])
       .select();
 
-    if (error) {
-      return null;
-    }
+    if (error) return null;
+
     if (data && data[0]) {
       const normalized = normalizeCustomerRow(data[0]);
       setCustomers((prev) => [...prev, normalized]);
       return normalized;
     }
+
     return null;
   };
 
-  const resolvePhoneFromIdentifier = (identifier: string): { phone: string; customer: Customer | null } => {
+  const resolvePhoneFromIdentifier = (
+    identifier: string
+  ): { phone: string; customer: Customer | null } => {
     const asDigits = digitsOnly(identifier);
+
     if (asDigits) {
       const found = customers.find((c) => digitsOnly((c as any).phone) === asDigits);
       return { phone: asDigits, customer: found ?? null };
@@ -315,7 +334,9 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       let cat = catFromItem;
 
       if (!cat) {
-        const prodByName = products.find((p) => String((p as any).name).trim() === String(it.productName).trim());
+        const prodByName = products.find(
+          (p) => String((p as any).name).trim() === String(it.productName).trim()
+        );
         if (prodByName) cat = String((prodByName as any).category ?? '');
       }
 
@@ -327,7 +348,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   const extractCustomerIdentifierFromReport = (rep: any): string => {
-    const phone = extractPhoneFromAny(rep) || extractPhoneFromAny(rep?.customer) || extractPhoneFromAny(rep?.client) || '';
+    const phone =
+      extractPhoneFromAny(rep) ||
+      extractPhoneFromAny(rep?.customer) ||
+      extractPhoneFromAny(rep?.client) ||
+      '';
 
     if (phone) return phone;
 
@@ -339,12 +364,15 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   // -------------------------
-  // --- FUNÇÕES DE BANCO DE DADOS (CRUD)
+  // CRUD
   // -------------------------
-
   const handleAddProduct = async (prod: Product) => {
     const { id, ...newProd } = prod as any;
-    const { data, error } = await supabase.from('products').insert([{ ...newProd, unit_id: unitId }]).select();
+    const { data, error } = await supabase
+      .from('products')
+      .insert([{ ...newProd, unit_id: unitId }])
+      .select();
+
     if (data) setProducts([data[0] as any, ...products]);
     if (error) alert('Erro ao criar: ' + error.message);
   };
@@ -360,7 +388,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   const handleReportSubmit = async (d: any) => {
-    const { data, error } = await supabase.from('reports').insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }]).select();
+    const { data, error } = await supabase
+      .from('reports')
+      .insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }])
+      .select();
+
     if (data) {
       setReports([data[0] as any, ...reports]);
 
@@ -371,27 +403,41 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
       alert('Venda enviada para validação!');
     }
+
     if (error) alert('Erro: ' + error.message);
   };
 
   const handleOrderSubmit = async (d: any) => {
-    const { data, error } = await supabase.from('orders').insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }]).select();
+    const { data, error } = await supabase
+      .from('orders')
+      .insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }])
+      .select();
+
     if (data) {
       setOrders([data[0] as any, ...orders]);
       alert('Encomenda registrada!');
     }
+
     if (error) alert('Erro: ' + error.message);
   };
 
   const handleValidateReport = async (id: string, admin: string) => {
-    const { error } = await supabase.from('reports').update({ status: 'VALIDADO', validated_by: admin }).eq('id', id);
+    const { error } = await supabase
+      .from('reports')
+      .update({ status: 'VALIDADO', validated_by: admin })
+      .eq('id', id);
+
     if (error) return alert('Erro ao validar: ' + error.message);
 
     const rep = reports.find((r) => String((r as any).id) === String(id)) as any;
     if (!rep) return;
 
     setReports((prev) =>
-      prev.map((r) => (String((r as any).id) === String(id) ? ({ ...r, status: 'VALIDADO', validatedBy: admin } as any) : r))
+      prev.map((r) =>
+        String((r as any).id) === String(id)
+          ? ({ ...r, status: 'VALIDADO', validatedBy: admin } as any)
+          : r
+      )
     );
 
     for (const item of rep.items || []) {
@@ -399,8 +445,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       if (product) {
         const newStock = safeNum((product as any).stock, 0) - safeNum(item.quantity, 0);
         await supabase.from('products').update({ stock: newStock }).eq('id', (product as any).id);
+
         setProducts((prev) =>
-          prev.map((p) => ((p as any).id === (product as any).id ? ({ ...p, stock: newStock } as any) : p))
+          prev.map((p) =>
+            (p as any).id === (product as any).id ? ({ ...p, stock: newStock } as any) : p
+          )
         );
       }
     }
@@ -430,7 +479,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   const handleAddExpense = async (newExp: Expense) => {
-    const { data, error } = await supabase.from('expenses').insert([{ ...(newExp as any), unit_id: unitId }]).select();
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert([{ ...(newExp as any), unit_id: unitId }])
+      .select();
+
     if (data) setExpenses([data[0] as any, ...expenses]);
     if (error) alert('Erro despesa: ' + error.message);
   };
@@ -445,15 +498,25 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     const existing = customers.find((cust) => digitsOnly((cust as any).phone) === phone);
 
     if (existing) {
-      const { error } = await supabase.from('customers').update(c as any).eq('id', (existing as any).id);
+      const { error } = await supabase
+        .from('customers')
+        .update(c as any)
+        .eq('id', (existing as any).id);
+
       if (!error) {
         setCustomers((prev) =>
-          prev.map((x) => ((x as any).id === (existing as any).id ? ({ ...x, ...(c as any) } as any) : x))
+          prev.map((x) =>
+            (x as any).id === (existing as any).id ? ({ ...x, ...(c as any) } as any) : x
+          )
         );
       }
     } else {
       const { id, ...newCust } = c as any;
-      const { data, error } = await supabase.from('customers').insert([{ ...newCust, unit_id: unitId }]).select();
+      const { data, error } = await supabase
+        .from('customers')
+        .insert([{ ...newCust, unit_id: unitId }])
+        .select();
+
       if (data) setCustomers((prev) => [...prev, normalizeCustomerRow(data[0])]);
       if (error) alert('Erro cliente: ' + error.message);
     }
@@ -492,7 +555,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   // -------------------------
-  // ✅ Fidelidade manual (Loyalty component chama essas)
+  // Fidelidade manual
   // -------------------------
   const handleManualAddPoints = async (identifier: string, points: number) => {
     const p = Math.trunc(safeNum(points, 0));
@@ -517,15 +580,24 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   // -------------------------
-  // ✅ Validações / Logística
+  // Validações / Logística
   // -------------------------
   const handleValidateOrder = async (id: string, admin: string) => {
-    const { error } = await supabase.from('orders').update({ status: 'ENTREGUE', validated_by: admin }).eq('id', id);
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'ENTREGUE', validated_by: admin })
+      .eq('id', id);
+
     if (error) return alert('Erro ao validar encomenda: ' + error.message);
 
     setOrders((prev) =>
-      prev.map((o) => (String((o as any).id) === String(id) ? ({ ...o, status: 'ENTREGUE', validatedBy: admin } as any) : o))
+      prev.map((o) =>
+        String((o as any).id) === String(id)
+          ? ({ ...o, status: 'ENTREGUE', validatedBy: admin } as any)
+          : o
+      )
     );
+
     alert('Encomenda Entregue!');
   };
 
@@ -534,6 +606,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     if (!order) return;
 
     const now = new Date().toISOString();
+
     const updatedItems = (order.items || []).map((it: any, idx: number) => {
       const itKey = String(it?.id ?? it?.itemId ?? it?.productId ?? it?.barcode ?? `${orderId}-${idx}`);
       const match =
@@ -551,7 +624,9 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     if (error) return alert('Erro ao marcar entregue: ' + error.message);
 
     setOrders((prev) =>
-      prev.map((o) => (String((o as any).id) === String(orderId) ? ({ ...o, items: updatedItems } as any) : o))
+      prev.map((o) =>
+        String((o as any).id) === String(orderId) ? ({ ...o, items: updatedItems } as any) : o
+      )
     );
   };
 
@@ -568,14 +643,16 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const removeAdmin = (id: string) => setAdmins((p) => p.filter((a) => (a as any).id !== id));
 
   const pendingCount =
-    reports.filter((r) => (r as any).status === 'PENDENTE').length +
-    orders.filter((o) => (o as any).status === 'PENDENTE').length;
+    reports.filter((r: any) => r.status === 'PENDENTE').length +
+    orders.filter((o: any) => o.status === 'PENDENTE').length;
 
-  // --- LOGIN DASHBOARD ---
   const handleDashboardLogin = () => {
     setIsLoadingLogin(true);
     setTimeout(() => {
-      const admin = admins.find((a) => (a as any).email === loginEmail && (a as any).password === loginPass);
+      const admin = admins.find(
+        (a: any) => a.email === loginEmail && a.password === loginPass
+      );
+
       if (admin) {
         setIsDashboardUnlocked(true);
         setLoginEmail('');
@@ -583,15 +660,17 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       } else {
         alert('🚫 Acesso Negado!');
       }
+
       setIsLoadingLogin(false);
     }, 800);
   };
 
-  // --- UI RENDER ---
   const SidebarContent = () => (
     <div className="space-y-8 mt-4">
       <div>
-        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Operacional</p>
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">
+          Operacional
+        </p>
         <div className="space-y-1">
           <NavItem view={View.VOLUNTEER_REPORT} icon={Store} label="Venda Balcão" />
           <NavItem view={View.VOLUNTEER_SCHEDULE} icon={CalendarDays} label="Escala" />
@@ -600,8 +679,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
           <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
         </div>
       </div>
+
       <div>
-        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Gestão</p>
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">
+          Gestão
+        </p>
         <div className="space-y-1">
           <NavItem view={View.DASHBOARD} icon={LayoutDashboard} label="Dashboard" />
           <NavItem view={View.VALIDATION} icon={CheckCircle} label="Validações" badge={pendingCount} />
@@ -610,6 +692,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
           <NavItem view={View.LOYALTY} icon={Star} label="Fidelidade" />
         </div>
       </div>
+
       <div className="pt-4 border-t border-zinc-900/50">
         <NavItem view={View.SETTINGS} icon={SettingsIcon} label="Configurações" />
       </div>
@@ -618,6 +701,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const NavItem = ({ view, icon: Icon, label, badge }: any) => {
     const active = currentView === view;
+
     return (
       <button
         onClick={() => {
@@ -633,15 +717,19 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
         <div className="flex items-center gap-3">
           <Icon
             size={18}
-            className={`transition-colors ${active ? 'text-green-500' : 'text-zinc-600 group-hover:text-zinc-400'}`}
+            className={`transition-colors ${
+              active ? 'text-green-500' : 'text-zinc-600 group-hover:text-zinc-400'
+            }`}
           />
           <span>{label}</span>
         </div>
+
         {badge > 0 && (
           <span className="bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] rounded-full flex items-center justify-center font-bold px-1">
             {badge}
           </span>
         )}
+
         {active && <ChevronRight size={14} className="text-zinc-700" />}
       </button>
     );
@@ -681,7 +769,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
               <p className="text-[10px] text-zinc-500">Logado</p>
             </div>
           </div>
-          <button onClick={onLogoutUnit} className="text-zinc-500 hover:text-red-500 transition-colors" title="Sair da Unidade">
+          <button
+            onClick={onLogoutUnit}
+            className="text-zinc-500 hover:text-red-500 transition-colors"
+            title="Sair da Unidade"
+          >
             <LogOut size={16} />
           </button>
         </div>
@@ -695,14 +787,21 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
             <span className="text-[9px] text-green-500 font-bold uppercase">{unitName}</span>
           </div>
         </div>
+
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-zinc-400">
           <Menu size={24} />
         </button>
       </div>
 
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-black/90 backdrop-blur-xl" onClick={() => setMobileMenuOpen(false)}>
-          <div className="bg-zinc-950 w-3/4 h-full p-6 border-r border-white/10 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/90 backdrop-blur-xl"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="bg-zinc-950 w-3/4 h-full p-6 border-r border-white/10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <SidebarContent />
           </div>
         </div>
@@ -756,7 +855,12 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
                       <LogOut size={14} /> Bloquear
                     </button>
                   </div>
-                  <Dashboard transactions={transactions} products={products} expenses={expenses} />
+                  <Dashboard
+                    transactions={transactions}
+                    products={products}
+                    expenses={expenses}
+                    schedules={schedules}
+                  />
                 </div>
               )
             )
@@ -811,7 +915,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
           )}
 
           {!loading && currentView === View.CUSTOMERS && (
-            <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />
+            <Customers
+              customers={customers}
+              onSaveCustomer={handleSaveCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+            />
           )}
 
           {!loading && currentView === View.LOYALTY && (
@@ -881,6 +989,7 @@ const App: React.FC = () => {
       if (error) console.error('Erro ao buscar regionais:', error.message);
       setLoadingUnits(false);
     };
+
     fetchUnits();
 
     window.addEventListener('beforeinstallprompt', (e: any) => {
@@ -972,7 +1081,10 @@ const App: React.FC = () => {
             }}
           />
           <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2">
-            SARA <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600">REGIONAL</span>
+            SARA{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600">
+              REGIONAL
+            </span>
           </h1>
           <p className="text-zinc-400 text-lg mb-6">Selecione sua unidade para acessar o sistema</p>
 
@@ -992,7 +1104,10 @@ const App: React.FC = () => {
             <p className="text-xs">Buscando unidades...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+          <div
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 animate-fade-in-up"
+            style={{ animationDelay: '0.2s' }}
+          >
             {units.map((unit) => (
               <button
                 key={unit.id}
@@ -1010,14 +1125,20 @@ const App: React.FC = () => {
                     <Trash2 size={14} />
                   </div>
                 </div>
+
                 <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold bg-zinc-950 border border-zinc-800 group-hover:border-green-500 group-hover:text-green-400 transition-colors shadow-lg">
                   <MapPin size={20} className="text-zinc-500 group-hover:text-green-500 transition-colors" />
                 </div>
+
                 <div className="relative z-10">
-                  <h3 className="text-white font-bold text-lg group-hover:text-green-400 transition-colors">{unit.name}</h3>
+                  <h3 className="text-white font-bold text-lg group-hover:text-green-400 transition-colors">
+                    {unit.name}
+                  </h3>
                   <div className="flex items-center justify-center gap-1 mt-1">
                     <Lock size={10} className="text-zinc-600 group-hover:text-green-600" />
-                    <p className="text-zinc-600 text-xs font-medium uppercase tracking-wider group-hover:text-zinc-400">Protegido</p>
+                    <p className="text-zinc-600 text-xs font-medium uppercase tracking-wider group-hover:text-zinc-400">
+                      Protegido
+                    </p>
                   </div>
                 </div>
               </button>
@@ -1030,7 +1151,9 @@ const App: React.FC = () => {
               <div className="w-12 h-12 rounded-full flex items-center justify-center bg-zinc-900 group-hover:bg-zinc-800 transition-colors">
                 <Plus size={24} className="text-zinc-500 group-hover:text-white" />
               </div>
-              <p className="text-zinc-500 font-bold text-sm group-hover:text-white">Adicionar Regional</p>
+              <p className="text-zinc-500 font-bold text-sm group-hover:text-white">
+                Adicionar Regional
+              </p>
             </button>
           </div>
         )}
@@ -1052,10 +1175,16 @@ const App: React.FC = () => {
               placeholder="••••"
             />
             <div className="flex gap-3">
-              <button onClick={() => setLoginModalUnit(null)} className="flex-1 py-3 text-zinc-500 hover:text-white font-bold transition-colors">
+              <button
+                onClick={() => setLoginModalUnit(null)}
+                className="flex-1 py-3 text-zinc-500 hover:text-white font-bold transition-colors"
+              >
                 Cancelar
               </button>
-              <button onClick={handleConfirmLogin} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-colors">
+              <button
+                onClick={handleConfirmLogin}
+                className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-colors"
+              >
                 Acessar
               </button>
             </div>
@@ -1066,15 +1195,22 @@ const App: React.FC = () => {
       {addModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden animate-fade-in">
-            <button onClick={() => setAddModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white">
+            <button
+              onClick={() => setAddModalOpen(false)}
+              className="absolute top-4 right-4 text-zinc-500 hover:text-white"
+            >
               <X size={20} />
             </button>
+
             <h2 className="text-xl font-bold text-white mb-6 flex items-center justify-center gap-2">
               <Plus size={20} className="text-green-500" /> Nova Regional
             </h2>
+
             <div className="space-y-4 text-left">
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Nome da Regional</label>
+                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">
+                  Nome da Regional
+                </label>
                 <input
                   value={newUnitName}
                   onChange={(e) => setNewUnitName(e.target.value)}
@@ -1082,8 +1218,11 @@ const App: React.FC = () => {
                   placeholder="Ex: Bangu"
                 />
               </div>
+
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Senha de Acesso</label>
+                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">
+                  Senha de Acesso
+                </label>
                 <input
                   type="password"
                   value={newUnitPass}
@@ -1092,7 +1231,11 @@ const App: React.FC = () => {
                   placeholder="Crie uma senha segura"
                 />
               </div>
-              <button onClick={handleCreateUnit} className="w-full bg-white text-black py-3 rounded-xl font-bold hover:bg-zinc-200 transition-colors mt-2">
+
+              <button
+                onClick={handleCreateUnit}
+                className="w-full bg-white text-black py-3 rounded-xl font-bold hover:bg-zinc-200 transition-colors mt-2"
+              >
                 Criar Unidade
               </button>
             </div>
