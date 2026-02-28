@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Transaction, Product } from '../types';
+import { Transaction, Product, VolunteerSchedule as VolunteerScheduleItem } from '../types';
 import { analyzeSales } from '../services/geminiService';
 import {
   BarChart,
@@ -27,7 +27,6 @@ import {
   Check,
   X,
   Lightbulb,
-  Users,
   Church,
   Trophy,
   Zap,
@@ -37,6 +36,7 @@ import {
 interface DashboardProps {
   transactions: Transaction[];
   products: Product[];
+  schedules?: VolunteerScheduleItem[];
   expenses?: any[];
 }
 
@@ -50,7 +50,13 @@ const money = (value: number) =>
 
 const normalizeName = (value: string) => String(value ?? '').trim();
 
-export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) => {
+const parseSafeDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
+
+export const Dashboard: React.FC<DashboardProps> = ({
+  transactions,
+  products,
+  schedules = []
+}) => {
   const [insight, setInsight] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -104,6 +110,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
       );
     });
   }, [transactions, selectedDate]);
+
+  const monthSchedules = useMemo(() => {
+    return schedules.filter((s) => {
+      const sDate = parseSafeDate(s.date);
+      return (
+        sDate.getMonth() === selectedDate.getMonth() &&
+        sDate.getFullYear() === selectedDate.getFullYear()
+      );
+    });
+  }, [schedules, selectedDate]);
 
   // --- KPI FINANCEIROS ---
   const financialMetrics = useMemo(() => {
@@ -162,81 +178,135 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
     return { topRevenue, topSpeed, topTicket };
   }, [volunteerStats]);
 
-  // --- META POR CULTO E POR VOLUNTÁRIO ---
+  // --- META POR CULTO E POR VOLUNTÁRIO BASEADA NA ESCALA ---
   const goalByService = useMemo(() => {
-    const serviceMap: Record<
-      string,
-      {
-        revenue: number;
-        volunteers: Set<string>;
-        volunteersData: Record<string, { revenue: number; count: number }>;
-      }
-    > = {};
+    type VolunteerRow = {
+      assignmentCount: number;
+      revenue: number;
+      saleCount: number;
+    };
 
-    monthTransactions.forEach((t) => {
-      const service = normalizeName(t.serviceType || 'Outros');
-      const volunteer = normalizeName(t.volunteerName || 'Não Identificado');
+    type ServiceRow = {
+      serviceName: string;
+      assignmentCount: number;
+      revenue: number;
+      volunteers: Record<string, VolunteerRow>;
+    };
 
-      if (!serviceMap[service]) {
-        serviceMap[service] = {
+    const serviceMap: Record<string, ServiceRow> = {};
+
+    // 1) Primeiro, monta a estrutura a partir da escala
+    monthSchedules.forEach((schedule) => {
+      const serviceName = normalizeName(schedule.serviceType || 'Outros');
+      const volunteerName = normalizeName(schedule.volunteerName || 'Não Identificado');
+
+      if (!serviceMap[serviceName]) {
+        serviceMap[serviceName] = {
+          serviceName,
+          assignmentCount: 0,
           revenue: 0,
-          volunteers: new Set<string>(),
-          volunteersData: {}
+          volunteers: {}
         };
       }
 
-      serviceMap[service].revenue += Number(t.total || 0);
-      serviceMap[service].volunteers.add(volunteer);
+      serviceMap[serviceName].assignmentCount += 1;
 
-      if (!serviceMap[service].volunteersData[volunteer]) {
-        serviceMap[service].volunteersData[volunteer] = { revenue: 0, count: 0 };
+      if (!serviceMap[serviceName].volunteers[volunteerName]) {
+        serviceMap[serviceName].volunteers[volunteerName] = {
+          assignmentCount: 0,
+          revenue: 0,
+          saleCount: 0
+        };
       }
 
-      serviceMap[service].volunteersData[volunteer].revenue += Number(t.total || 0);
-      serviceMap[service].volunteersData[volunteer].count += 1;
+      serviceMap[serviceName].volunteers[volunteerName].assignmentCount += 1;
     });
 
-    const totalVolunteerSlots = Object.values(serviceMap).reduce(
-      (acc, item) => acc + item.volunteers.size,
+    // 2) Depois, injeta as vendas do mês
+    monthTransactions.forEach((transaction) => {
+      const serviceName = normalizeName(transaction.serviceType || 'Outros');
+      const volunteerName = normalizeName(transaction.volunteerName || 'Não Identificado');
+
+      if (!serviceMap[serviceName]) {
+        serviceMap[serviceName] = {
+          serviceName,
+          assignmentCount: 0,
+          revenue: 0,
+          volunteers: {}
+        };
+      }
+
+      serviceMap[serviceName].revenue += Number(transaction.total || 0);
+
+      if (!serviceMap[serviceName].volunteers[volunteerName]) {
+        serviceMap[serviceName].volunteers[volunteerName] = {
+          assignmentCount: 0,
+          revenue: 0,
+          saleCount: 0
+        };
+      }
+
+      serviceMap[serviceName].volunteers[volunteerName].revenue += Number(transaction.total || 0);
+      serviceMap[serviceName].volunteers[volunteerName].saleCount += 1;
+    });
+
+    const totalAssignmentsInMonth = Object.values(serviceMap).reduce(
+      (acc, service) => acc + service.assignmentCount,
       0
     );
 
-    return Object.entries(serviceMap)
-      .map(([serviceName, data]) => {
-        const volunteerCount = data.volunteers.size;
+    return Object.values(serviceMap)
+      .map((service) => {
+        const fallbackVolunteerCount = Object.keys(service.volunteers).length;
+
         const serviceGoal =
-          currentGoal > 0 && totalVolunteerSlots > 0
-            ? currentGoal * (volunteerCount / totalVolunteerSlots)
+          currentGoal > 0
+            ? totalAssignmentsInMonth > 0
+              ? currentGoal * (service.assignmentCount / totalAssignmentsInMonth)
+              : fallbackVolunteerCount > 0
+              ? currentGoal / Object.keys(serviceMap).length
+              : 0
             : 0;
 
-        const individualGoal = volunteerCount > 0 ? serviceGoal / volunteerCount : 0;
-        const serviceProgress = serviceGoal > 0 ? (data.revenue / serviceGoal) * 100 : 0;
+        const volunteers = Object.entries(service.volunteers)
+          .map(([name, data]) => {
+            const volunteerGoal =
+              service.assignmentCount > 0
+                ? serviceGoal * (data.assignmentCount / service.assignmentCount)
+                : fallbackVolunteerCount > 0
+                ? serviceGoal / fallbackVolunteerCount
+                : 0;
 
-        const volunteers = Object.entries(data.volunteersData)
-          .map(([name, info]) => {
-            const progress = individualGoal > 0 ? (info.revenue / individualGoal) * 100 : 0;
+            const progress = volunteerGoal > 0 ? (data.revenue / volunteerGoal) * 100 : 0;
+
             return {
               name,
-              revenue: info.revenue,
-              count: info.count,
-              goal: individualGoal,
+              assignmentCount: data.assignmentCount,
+              revenue: data.revenue,
+              saleCount: data.saleCount,
+              goal: volunteerGoal,
               progress
             };
           })
-          .sort((a, b) => b.revenue - a.revenue);
+          .sort((a, b) => {
+            if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+            if (b.assignmentCount !== a.assignmentCount) return b.assignmentCount - a.assignmentCount;
+            return a.name.localeCompare(b.name);
+          });
+
+        const serviceProgress = serviceGoal > 0 ? (service.revenue / serviceGoal) * 100 : 0;
 
         return {
-          serviceName,
-          volunteerCount,
-          serviceRevenue: data.revenue,
+          serviceName: service.serviceName,
+          assignmentCount: service.assignmentCount,
+          serviceRevenue: service.revenue,
           serviceGoal,
-          individualGoal,
           serviceProgress,
           volunteers
         };
       })
       .sort((a, b) => b.serviceRevenue - a.serviceRevenue);
-  }, [monthTransactions, currentGoal]);
+  }, [monthSchedules, monthTransactions, currentGoal]);
 
   const totalGoalProgress =
     currentGoal > 0 ? Math.min((financialMetrics.revenue / currentGoal) * 100, 100) : 0;
@@ -494,10 +564,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-wide">
                 <Church size={20} className="text-green-500" />
-                Meta por culto e por voluntário
+                Meta por culto e por voluntário escalado
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
-                A meta do mês é dividida pela quantidade de voluntários que venderam em cada culto.
+                A meta do mês é distribuída pela escala cadastrada, então os nomes já aparecem mesmo antes da primeira venda.
               </p>
             </div>
 
@@ -511,7 +581,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
 
           {goalByService.length === 0 ? (
             <div className="text-sm text-zinc-500 border border-dashed border-zinc-800 rounded-2xl p-10 text-center">
-              Ainda não existem vendas no mês para distribuir meta por culto.
+              Cadastre a escala do mês para distribuir a meta antes das vendas.
             </div>
           ) : (
             <div className="space-y-6">
@@ -526,18 +596,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
                         {service.serviceName}
                       </h4>
                       <p className="text-zinc-500 text-sm">
-                        {service.volunteerCount} voluntário(s) • meta do culto:{' '}
+                        {service.assignmentCount} escala(s) no mês • meta do culto:{' '}
                         <span className="text-zinc-300 font-bold">
                           {money(service.serviceGoal)}
-                        </span>{' '}
-                        • meta individual:{' '}
-                        <span className="text-green-400 font-bold">
-                          {money(service.individualGoal)}
                         </span>
                       </p>
                     </div>
 
-                    <div className="min-w-[220px]">
+                    <div className="min-w-[240px]">
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-zinc-500 uppercase tracking-wider font-bold">
                           Progresso do culto
@@ -573,7 +639,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, products }) 
                               {volunteer.name}
                             </p>
                             <p className="text-zinc-500 text-xs mt-1">
-                              {volunteer.count} venda(s) neste culto
+                              {volunteer.assignmentCount} escala(s) • {volunteer.saleCount} venda(s)
                             </p>
                           </div>
 
