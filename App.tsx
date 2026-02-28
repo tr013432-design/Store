@@ -8,10 +8,11 @@ import { Orders } from './components/Orders';
 import { Inventory } from './components/Inventory';
 import { Settings } from './components/Settings';
 import { Deliveries } from './components/Deliveries';
+import { VolunteerSchedule } from './components/VolunteerSchedule';
 import { Loyalty } from './components/Loyalty';
 import { Customers } from './components/Customers';
 import { Expenses } from './components/Expenses';
-import {
+ import {
   LayoutDashboard,
   Package,
   Menu,
@@ -30,7 +31,8 @@ import {
   Plus,
   X,
   Trash2,
-  Download
+  Download,
+  CalendarDays
 } from 'lucide-react';
 
 // --- TIPOS ---
