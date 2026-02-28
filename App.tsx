@@ -558,12 +558,13 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     <div className="space-y-8 mt-4">
       <div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Operacional</p>
-        <div className="space-y-1">
-          <NavItem view={View.VOLUNTEER_REPORT} icon={Store} label="Venda Balcão" />
-          <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
-          <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
-          <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-        </div>
+      <div className="space-y-1">
+  <NavItem view={View.VOLUNTEER_REPORT} icon={Store} label="Venda Balcão" />
+  <NavItem view={View.VOLUNTEER_SCHEDULE} icon={CalendarDays} label="Escala" />
+  <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
+  <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
+  <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
+</div>
       </div>
       <div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Gestão</p>
