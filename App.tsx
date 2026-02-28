@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { Product, Transaction, DailyReport, OrderSheet, AdminUser, Customer, Expense } from './types';
+import {
+  Product,
+  Transaction,
+  DailyReport,
+  OrderSheet,
+  AdminUser,
+  Customer,
+  Expense,
+  VolunteerSchedule as VolunteerScheduleItem
+} from './types';
 import { Dashboard } from './components/Dashboard';
 import { VolunteerSales } from './components/VolunteerSales';
 import { ReportValidation } from './components/ReportValidation';
@@ -12,7 +21,7 @@ import { VolunteerSchedule } from './components/VolunteerSchedule';
 import { Loyalty } from './components/Loyalty';
 import { Customers } from './components/Customers';
 import { Expenses } from './components/Expenses';
- import {
+import {
   LayoutDashboard,
   Package,
   Menu,
@@ -46,6 +55,7 @@ interface RegionalUnit {
 enum View {
   DASHBOARD,
   VOLUNTEER_REPORT,
+  VOLUNTEER_SCHEDULE,
   ORDERS,
   VALIDATION,
   INVENTORY,
@@ -85,7 +95,6 @@ const extractPhoneFromAny = (obj: any): string => {
 const looksLikeUUID = (s: any) => typeof s === 'string' && s.includes('-') && s.length >= 20;
 
 const normalizeCustomerRow = (row: any): Customer => {
-  // se sua tabela já for camelCase, isso não atrapalha
   return {
     ...row,
     totalSpent: row.totalSpent ?? row.total_spent ?? 0,
@@ -110,6 +119,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const [orders, setOrders] = useState<OrderSheet[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [schedules, setSchedules] = useState<VolunteerScheduleItem[]>([]);
 
   // DADO DERIVADO (Para o Dashboard funcionar sem mudar o componente)
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -125,7 +135,9 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const [pointsValue, setPointsValue] = useState<number>(0.1);
   const [availableVolunteers, setAvailableVolunteers] = useState<string[]>(['Voluntário 1', 'Voluntário 2']);
   const [availableServices, setAvailableServices] = useState<string[]>(['Culto da Família', 'Arena Jovem', 'Domingo']);
-  const [admins, setAdmins] = useState<AdminUser[]>([{ id: '1', name: 'Admin', email: `admin@${unitId}.com`, password: '123' }]);
+  const [admins, setAdmins] = useState<AdminUser[]>([
+    { id: '1', name: 'Admin', email: `admin@${unitId}.com`, password: '123' }
+  ]);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDashboardUnlocked, setIsDashboardUnlocked] = useState(false);
@@ -169,14 +181,22 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       .order('created_at', { ascending: false });
     if (expData) setExpenses(expData as any);
 
+    const { data: scheduleData } = await supabase
+      .from('volunteer_schedules')
+      .select('*')
+      .eq('unit_id', unitId)
+      .order('date', { ascending: true });
+
+    if (scheduleData) setSchedules(scheduleData as VolunteerScheduleItem[]);
+
     setLoading(false);
   };
 
   // Atualiza as Transações (Dashboard) sempre que Relatórios ou Encomendas mudam
   useEffect(() => {
     const txReports = reports
-      .filter(r => (r as any).status === 'VALIDADO')
-      .map(r => ({
+      .filter((r) => (r as any).status === 'VALIDADO')
+      .map((r) => ({
         id: (r as any).id,
         date: (r as any).date,
         total: (r as any).grandTotal,
@@ -187,8 +207,8 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       }));
 
     const txOrders = orders
-      .filter(o => (o as any).status === 'ENTREGUE')
-      .map(o => ({
+      .filter((o) => (o as any).status === 'ENTREGUE')
+      .map((o) => ({
         id: (o as any).id,
         date: (o as any).date,
         total: (o as any).grandTotal,
@@ -205,12 +225,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   // Fidelidade (Supabase)
   // -------------------------
 
-  // garante que existe customer pelo telefone
   const ensureCustomerByPhone = async (phoneRaw: string, nameRaw?: string) => {
     const phone = digitsOnly(phoneRaw);
     if (!phone) return null;
 
-    const existing = customers.find(c => digitsOnly((c as any).phone) === phone);
+    const existing = customers.find((c) => digitsOnly((c as any).phone) === phone);
     if (existing) return existing;
 
     const name = String(nameRaw ?? '').trim() || `Cliente ${phone.slice(-4)}`;
@@ -221,39 +240,38 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       .select();
 
     if (error) {
-      // se já existir por concorrência, só ignora
       return null;
     }
     if (data && data[0]) {
       const normalized = normalizeCustomerRow(data[0]);
-      setCustomers(prev => [...prev, normalized]);
+      setCustomers((prev) => [...prev, normalized]);
       return normalized;
     }
     return null;
   };
 
-  // resolve identificador que pode ser UUID (id) ou telefone
   const resolvePhoneFromIdentifier = (identifier: string): { phone: string; customer: Customer | null } => {
     const asDigits = digitsOnly(identifier);
     if (asDigits) {
-      const found = customers.find(c => digitsOnly((c as any).phone) === asDigits);
+      const found = customers.find((c) => digitsOnly((c as any).phone) === asDigits);
       return { phone: asDigits, customer: found ?? null };
     }
 
-    // se veio UUID, tenta achar o customer pelo id
-    const byId = customers.find(c => String((c as any).id) === String(identifier));
+    const byId = customers.find((c) => String((c as any).id) === String(identifier));
     const phone = digitsOnly((byId as any)?.phone);
     return { phone, customer: byId ?? null };
   };
 
-  const updateCustomerPoints = async (identifier: string, deltaPoints: number, extra?: { addSpent?: number; lastPurchase?: string }) => {
+  const updateCustomerPoints = async (
+    identifier: string,
+    deltaPoints: number,
+    extra?: { addSpent?: number; lastPurchase?: string }
+  ) => {
     const { phone } = resolvePhoneFromIdentifier(identifier);
     if (!phone) return;
 
-    // busca no estado
-    let cust = customers.find(c => digitsOnly((c as any).phone) === phone) ?? null;
+    let cust = customers.find((c) => digitsOnly((c as any).phone) === phone) ?? null;
 
-    // cria se não existir
     if (!cust) {
       cust = await ensureCustomerByPhone(phone);
     }
@@ -278,8 +296,8 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       return;
     }
 
-    setCustomers(prev =>
-      prev.map(c =>
+    setCustomers((prev) =>
+      prev.map((c) =>
         String((c as any).id) === String((cust as any).id)
           ? ({ ...c, points: newPoints, totalSpent: newSpent, lastPurchase } as any)
           : c
@@ -287,19 +305,17 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     );
   };
 
-  // calcula pontos por item/categoria
   const computePointsFromItems = (items: any[]): number => {
     let total = 0;
 
     for (const it of items || []) {
       const qty = Math.max(1, Math.trunc(safeNum(it.quantity, 1)));
 
-      // tenta achar categoria de vários jeitos
       const catFromItem = String(it.category ?? it.productCategory ?? it.product_category ?? '');
       let cat = catFromItem;
 
       if (!cat) {
-        const prodByName = products.find(p => String((p as any).name).trim() === String(it.productName).trim());
+        const prodByName = products.find((p) => String((p as any).name).trim() === String(it.productName).trim());
         if (prodByName) cat = String((prodByName as any).category ?? '');
       }
 
@@ -311,21 +327,14 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   const extractCustomerIdentifierFromReport = (rep: any): string => {
-    // prioridade: telefone direto
-    const phone =
-      extractPhoneFromAny(rep) ||
-      extractPhoneFromAny(rep?.customer) ||
-      extractPhoneFromAny(rep?.client) ||
-      '';
+    const phone = extractPhoneFromAny(rep) || extractPhoneFromAny(rep?.customer) || extractPhoneFromAny(rep?.client) || '';
 
     if (phone) return phone;
 
-    // fallback: se tiver customerId uuid, usa isso
     if (rep?.customerId) return String(rep.customerId);
     if (rep?.customer_id) return String(rep.customer_id);
     if (rep?.customerUUID) return String(rep.customerUUID);
 
-    // último fallback: nada
     return '';
   };
 
@@ -342,12 +351,12 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const handleUpdateProduct = async (prod: Product) => {
     const { error } = await supabase.from('products').update(prod as any).eq('id', (prod as any).id);
-    if (!error) setProducts(products.map(p => ((p as any).id === (prod as any).id ? prod : p)));
+    if (!error) setProducts(products.map((p) => ((p as any).id === (prod as any).id ? prod : p)));
   };
 
   const handleDeleteProduct = async (id: string) => {
     const { error } = await supabase.from('products').delete().eq('id', id);
-    if (!error) setProducts(products.filter(p => (p as any).id !== id));
+    if (!error) setProducts(products.filter((p) => (p as any).id !== id));
   };
 
   const handleReportSubmit = async (d: any) => {
@@ -355,7 +364,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     if (data) {
       setReports([data[0] as any, ...reports]);
 
-      // ✅ garante cliente criado (pra já aparecer na fidelidade)
       const phone = extractPhoneFromAny(d);
       if (phone) {
         await ensureCustomerByPhone(phone, d?.customerName || d?.name);
@@ -375,38 +383,34 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     if (error) alert('Erro: ' + error.message);
   };
 
-  // ✅ VALIDAR VENDA = baixa estoque + soma pontos de fidelidade
   const handleValidateReport = async (id: string, admin: string) => {
-    // 1) Atualiza Status
     const { error } = await supabase.from('reports').update({ status: 'VALIDADO', validated_by: admin }).eq('id', id);
     if (error) return alert('Erro ao validar: ' + error.message);
 
-    const rep = reports.find(r => String((r as any).id) === String(id)) as any;
+    const rep = reports.find((r) => String((r as any).id) === String(id)) as any;
     if (!rep) return;
 
-    // Atualiza UI Imediatamente
-    setReports(prev => prev.map(r => (String((r as any).id) === String(id) ? ({ ...r, status: 'VALIDADO', validatedBy: admin } as any) : r)));
+    setReports((prev) =>
+      prev.map((r) => (String((r as any).id) === String(id) ? ({ ...r, status: 'VALIDADO', validatedBy: admin } as any) : r))
+    );
 
-    // 2) Baixa Estoque
     for (const item of rep.items || []) {
-      const product = products.find(p => String((p as any).name) === String(item.productName));
+      const product = products.find((p) => String((p as any).name) === String(item.productName));
       if (product) {
         const newStock = safeNum((product as any).stock, 0) - safeNum(item.quantity, 0);
         await supabase.from('products').update({ stock: newStock }).eq('id', (product as any).id);
-        setProducts(prev => prev.map(p => ((p as any).id === (product as any).id ? ({ ...p, stock: newStock } as any) : p)));
+        setProducts((prev) =>
+          prev.map((p) => ((p as any).id === (product as any).id ? ({ ...p, stock: newStock } as any) : p))
+        );
       }
     }
 
-    // 3) ✅ FIDELIDADE: calcula pontos por categoria e soma no cliente
     const identifier = extractCustomerIdentifierFromReport(rep);
-
-    // se não veio telefone/uuid, não tem como pontuar
     if (!identifier) return;
 
-    // se vier uuid, resolve o phone
     let phoneForEnsure = '';
     if (looksLikeUUID(identifier)) {
-      const byId = customers.find(c => String((c as any).id) === String(identifier));
+      const byId = customers.find((c) => String((c as any).id) === String(identifier));
       phoneForEnsure = digitsOnly((byId as any)?.phone);
     } else {
       phoneForEnsure = digitsOnly(identifier);
@@ -418,14 +422,10 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
     const earnedPoints = computePointsFromItems(rep.items || []);
     if (earnedPoints > 0) {
-      await updateCustomerPoints(
-        identifier,
-        earnedPoints,
-        {
-          addSpent: safeNum(rep.grandTotal, 0),
-          lastPurchase: rep.date ? new Date(rep.date).toISOString() : new Date().toISOString()
-        }
-      );
+      await updateCustomerPoints(identifier, earnedPoints, {
+        addSpent: safeNum(rep.grandTotal, 0),
+        lastPurchase: rep.date ? new Date(rep.date).toISOString() : new Date().toISOString()
+      });
     }
   };
 
@@ -437,27 +437,58 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const handleDeleteExpense = async (id: string) => {
     const { error } = await supabase.from('expenses').delete().eq('id', id);
-    if (!error) setExpenses(prev => prev.filter(e => (e as any).id !== id));
+    if (!error) setExpenses((prev) => prev.filter((e) => (e as any).id !== id));
   };
 
   const handleSaveCustomer = async (c: Customer) => {
     const phone = digitsOnly((c as any).phone);
-    const existing = customers.find(cust => digitsOnly((cust as any).phone) === phone);
+    const existing = customers.find((cust) => digitsOnly((cust as any).phone) === phone);
 
     if (existing) {
       const { error } = await supabase.from('customers').update(c as any).eq('id', (existing as any).id);
-      if (!error) setCustomers(prev => prev.map(x => ((x as any).id === (existing as any).id ? ({ ...x, ...(c as any) } as any) : x)));
+      if (!error) {
+        setCustomers((prev) =>
+          prev.map((x) => ((x as any).id === (existing as any).id ? ({ ...x, ...(c as any) } as any) : x))
+        );
+      }
     } else {
       const { id, ...newCust } = c as any;
       const { data, error } = await supabase.from('customers').insert([{ ...newCust, unit_id: unitId }]).select();
-      if (data) setCustomers(prev => [...prev, normalizeCustomerRow(data[0])]);
+      if (data) setCustomers((prev) => [...prev, normalizeCustomerRow(data[0])]);
       if (error) alert('Erro cliente: ' + error.message);
     }
   };
 
   const handleDeleteCustomer = async (id: string) => {
     await supabase.from('customers').delete().eq('id', id);
-    setCustomers(p => p.filter(x => String((x as any).id) !== String(id)));
+    setCustomers((p) => p.filter((x) => String((x as any).id) !== String(id)));
+  };
+
+  const handleAddSchedule = async (payload: Omit<VolunteerScheduleItem, 'id'>) => {
+    const { data, error } = await supabase
+      .from('volunteer_schedules')
+      .insert([{ ...payload, unit_id: unitId }])
+      .select()
+      .single();
+
+    if (error) {
+      alert('Erro ao salvar escala: ' + error.message);
+      return;
+    }
+
+    setSchedules((prev) => [...prev, data as VolunteerScheduleItem]);
+    alert('Voluntário adicionado à escala!');
+  };
+
+  const handleDeleteSchedule = async (id: string) => {
+    const { error } = await supabase.from('volunteer_schedules').delete().eq('id', id);
+
+    if (error) {
+      alert('Erro ao remover da escala: ' + error.message);
+      return;
+    }
+
+    setSchedules((prev) => prev.filter((item) => item.id !== id));
   };
 
   // -------------------------
@@ -476,7 +507,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     const { phone } = resolvePhoneFromIdentifier(identifier);
     if (!phone) return;
 
-    const cust = customers.find(x => digitsOnly((x as any).phone) === phone);
+    const cust = customers.find((x) => digitsOnly((x as any).phone) === phone);
     if (!cust) return;
 
     const currentPoints = safeNum((cust as any).points, 0);
@@ -486,24 +517,25 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   };
 
   // -------------------------
-  // ✅ Validações / Logística (antes estavam placeholders)
+  // ✅ Validações / Logística
   // -------------------------
   const handleValidateOrder = async (id: string, admin: string) => {
     const { error } = await supabase.from('orders').update({ status: 'ENTREGUE', validated_by: admin }).eq('id', id);
     if (error) return alert('Erro ao validar encomenda: ' + error.message);
 
-    setOrders(prev => prev.map(o => (String((o as any).id) === String(id) ? ({ ...o, status: 'ENTREGUE', validatedBy: admin } as any) : o)));
+    setOrders((prev) =>
+      prev.map((o) => (String((o as any).id) === String(id) ? ({ ...o, status: 'ENTREGUE', validatedBy: admin } as any) : o))
+    );
     alert('Encomenda Entregue!');
   };
 
   const handleMarkItemDelivered = async (orderId: string, itemId: string) => {
-    const order = orders.find(o => String((o as any).id) === String(orderId)) as any;
+    const order = orders.find((o) => String((o as any).id) === String(orderId)) as any;
     if (!order) return;
 
     const now = new Date().toISOString();
     const updatedItems = (order.items || []).map((it: any, idx: number) => {
-      const itKey =
-        String(it?.id ?? it?.itemId ?? it?.productId ?? it?.barcode ?? `${orderId}-${idx}`);
+      const itKey = String(it?.id ?? it?.itemId ?? it?.productId ?? it?.barcode ?? `${orderId}-${idx}`);
       const match =
         String(it?.id) === String(itemId) ||
         String(it?.itemId) === String(itemId) ||
@@ -518,36 +550,38 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     const { error } = await supabase.from('orders').update({ items: updatedItems }).eq('id', orderId);
     if (error) return alert('Erro ao marcar entregue: ' + error.message);
 
-    setOrders(prev => prev.map(o => (String((o as any).id) === String(orderId) ? ({ ...o, items: updatedItems } as any) : o)));
+    setOrders((prev) =>
+      prev.map((o) => (String((o as any).id) === String(orderId) ? ({ ...o, items: updatedItems } as any) : o))
+    );
   };
 
-  // Placeholders mantidos (se você ainda não usa)
-  const handleUnvalidateReport = (id: string) => {};
-  const handleUnvalidateOrder = (id: string) => {};
-  const handleToggleReportItem = (id: string, idx: number) => {};
-  const handleToggleOrderItem = (id: string, idx: number) => {};
+  const handleUnvalidateReport = (_id: string) => {};
+  const handleUnvalidateOrder = (_id: string) => {};
+  const handleToggleReportItem = (_id: string, _idx: number) => {};
+  const handleToggleOrderItem = (_id: string, _idx: number) => {};
 
-  const addVolunteer = (n: string) => setAvailableVolunteers(p => [...p, n]);
-  const removeVolunteer = (n: string) => setAvailableVolunteers(p => p.filter(v => v !== n));
-  const addService = (s: string) => setAvailableServices(p => [...p, s]);
-  const removeService = (s: string) => setAvailableServices(p => p.filter(x => x !== s));
-  const addAdmin = (a: any) => setAdmins(p => [...p, { ...a, id: Date.now().toString() }]);
-  const removeAdmin = (id: string) => setAdmins(p => p.filter(a => (a as any).id !== id));
+  const addVolunteer = (n: string) => setAvailableVolunteers((p) => [...p, n]);
+  const removeVolunteer = (n: string) => setAvailableVolunteers((p) => p.filter((v) => v !== n));
+  const addService = (s: string) => setAvailableServices((p) => [...p, s]);
+  const removeService = (s: string) => setAvailableServices((p) => p.filter((x) => x !== s));
+  const addAdmin = (a: any) => setAdmins((p) => [...p, { ...a, id: Date.now().toString() }]);
+  const removeAdmin = (id: string) => setAdmins((p) => p.filter((a) => (a as any).id !== id));
 
   const pendingCount =
-    reports.filter(r => (r as any).status === 'PENDENTE').length + orders.filter(o => (o as any).status === 'PENDENTE').length;
+    reports.filter((r) => (r as any).status === 'PENDENTE').length +
+    orders.filter((o) => (o as any).status === 'PENDENTE').length;
 
   // --- LOGIN DASHBOARD ---
   const handleDashboardLogin = () => {
     setIsLoadingLogin(true);
     setTimeout(() => {
-      const admin = admins.find(a => (a as any).email === loginEmail && (a as any).password === loginPass);
+      const admin = admins.find((a) => (a as any).email === loginEmail && (a as any).password === loginPass);
       if (admin) {
         setIsDashboardUnlocked(true);
         setLoginEmail('');
         setLoginPass('');
       } else {
-        alert(`🚫 Acesso Negado!`);
+        alert('🚫 Acesso Negado!');
       }
       setIsLoadingLogin(false);
     }, 800);
@@ -558,13 +592,13 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     <div className="space-y-8 mt-4">
       <div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Operacional</p>
-      <div className="space-y-1">
-  <NavItem view={View.VOLUNTEER_REPORT} icon={Store} label="Venda Balcão" />
-  <NavItem view={View.VOLUNTEER_SCHEDULE} icon={CalendarDays} label="Escala" />
-  <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
-  <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
-  <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
-</div>
+        <div className="space-y-1">
+          <NavItem view={View.VOLUNTEER_REPORT} icon={Store} label="Venda Balcão" />
+          <NavItem view={View.VOLUNTEER_SCHEDULE} icon={CalendarDays} label="Escala" />
+          <NavItem view={View.ORDERS} icon={ShoppingBag} label="Encomendas" />
+          <NavItem view={View.CUSTOMERS} icon={Users} label="Clientes" />
+          <NavItem view={View.INVENTORY} icon={Package} label="Estoque" />
+        </div>
       </div>
       <div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Gestão</p>
@@ -591,11 +625,16 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
           setMobileMenuOpen(false);
         }}
         className={`group flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm mx-1 ${
-          active ? 'bg-gradient-to-r from-zinc-900 to-transparent text-white border-l-2 border-green-500' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/50'
+          active
+            ? 'bg-gradient-to-r from-zinc-900 to-transparent text-white border-l-2 border-green-500'
+            : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/50'
         }`}
       >
         <div className="flex items-center gap-3">
-          <Icon size={18} className={`transition-colors ${active ? 'text-green-500' : 'text-zinc-600 group-hover:text-zinc-400'}`} />
+          <Icon
+            size={18}
+            className={`transition-colors ${active ? 'text-green-500' : 'text-zinc-600 group-hover:text-zinc-400'}`}
+          />
           <span>{label}</span>
         </div>
         {badge > 0 && (
@@ -617,17 +656,21 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
             src="/logo.png"
             alt="Sara Store"
             className="w-40 h-40 object-contain drop-shadow-2xl relative z-10 transition-transform hover:scale-105 duration-500"
-            onError={e => {
+            onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
           />
           <div className="mt-4 px-3 py-1 bg-green-500/10 rounded-full border border-green-500/20">
-            <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest text-center">SARA {unitName.toUpperCase()}</p>
+            <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest text-center">
+              SARA {unitName.toUpperCase()}
+            </p>
           </div>
         </div>
+
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <SidebarContent />
         </div>
+
         <div className="p-4 mt-4 border-t border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-800 flex items-center justify-center text-xs font-bold shadow-lg shadow-green-500/20">
@@ -659,7 +702,7 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-40 bg-black/90 backdrop-blur-xl" onClick={() => setMobileMenuOpen(false)}>
-          <div className="bg-zinc-950 w-3/4 h-full p-6 border-r border-white/10 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-zinc-950 w-3/4 h-full p-6 border-r border-white/10 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <SidebarContent />
           </div>
         </div>
@@ -682,15 +725,15 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
                     <h2 className="text-2xl font-bold text-white mb-6">Área Restrita</h2>
                     <input
                       value={loginEmail}
-                      onChange={e => setLoginEmail(e.target.value)}
+                      onChange={(e) => setLoginEmail(e.target.value)}
                       className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 mb-3 text-white focus:border-green-500 outline-none transition-all"
                       placeholder="Email"
                     />
                     <input
                       type="password"
                       value={loginPass}
-                      onChange={e => setLoginPass(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleDashboardLogin()}
+                      onChange={(e) => setLoginPass(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleDashboardLogin()}
                       className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 mb-6 text-white focus:border-green-500 outline-none transition-all"
                       placeholder="Senha"
                     />
@@ -729,9 +772,26 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
               pointsValue={pointsValue}
             />
           )}
-          {!loading && currentView === View.ORDERS && (
-            <Orders products={products} onSubmitOrders={handleOrderSubmit} availableVolunteers={availableVolunteers} availableServices={availableServices} />
+
+          {!loading && currentView === View.VOLUNTEER_SCHEDULE && (
+            <VolunteerSchedule
+              schedules={schedules}
+              availableVolunteers={availableVolunteers}
+              availableServices={availableServices}
+              onAddSchedule={handleAddSchedule}
+              onDeleteSchedule={handleDeleteSchedule}
+            />
           )}
+
+          {!loading && currentView === View.ORDERS && (
+            <Orders
+              products={products}
+              onSubmitOrders={handleOrderSubmit}
+              availableVolunteers={availableVolunteers}
+              availableServices={availableServices}
+            />
+          )}
+
           {!loading && currentView === View.VALIDATION && (
             <ReportValidation
               reports={reports}
@@ -745,8 +805,15 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
               onToggleOrderItem={handleToggleOrderItem}
             />
           )}
-          {!loading && currentView === View.DELIVERIES && <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />}
-          {!loading && currentView === View.CUSTOMERS && <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />}
+
+          {!loading && currentView === View.DELIVERIES && (
+            <Deliveries orders={orders} onMarkDelivered={handleMarkItemDelivered} />
+          )}
+
+          {!loading && currentView === View.CUSTOMERS && (
+            <Customers customers={customers} onSaveCustomer={handleSaveCustomer} onDeleteCustomer={handleDeleteCustomer} />
+          )}
+
           {!loading && currentView === View.LOYALTY && (
             <Loyalty
               customers={customers}
@@ -756,10 +823,25 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
               onRedeemReward={handleRedeemReward}
             />
           )}
+
           {!loading && currentView === View.INVENTORY && (
-            <Inventory products={products} onUpdateProduct={handleUpdateProduct} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} />
+            <Inventory
+              products={products}
+              onUpdateProduct={handleUpdateProduct}
+              onAddProduct={handleAddProduct}
+              onDeleteProduct={handleDeleteProduct}
+            />
           )}
-          {!loading && currentView === View.EXPENSES && <Expenses expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense} currentUser="Admin" />}
+
+          {!loading && currentView === View.EXPENSES && (
+            <Expenses
+              expenses={expenses}
+              onAddExpense={handleAddExpense}
+              onDeleteExpense={handleDeleteExpense}
+              currentUser="Admin"
+            />
+          )}
+
           {!loading && currentView === View.SETTINGS && (
             <Settings
               volunteers={availableVolunteers}
@@ -834,6 +916,7 @@ const App: React.FC = () => {
       alert('Preencha todos os campos!');
       return;
     }
+
     const newId = newUnitName.toLowerCase().replace(/\s+/g, '_');
 
     const { data, error } = await supabase
@@ -857,14 +940,21 @@ const App: React.FC = () => {
     const senha = window.prompt('Para confirmar, digite a senha MESTRE para apagar:');
     if (senha === '123') {
       await supabase.from('units').delete().eq('id', id);
-      setUnits(prev => prev.filter(u => u.id !== id));
+      setUnits((prev) => prev.filter((u) => u.id !== id));
     } else if (senha) {
       alert('Senha incorreta.');
     }
   };
 
   if (selectedUnit) {
-    return <StoreSystem key={selectedUnit.id} unitId={selectedUnit.id} unitName={selectedUnit.name} onLogoutUnit={() => setSelectedUnit(null)} />;
+    return (
+      <StoreSystem
+        key={selectedUnit.id}
+        unitId={selectedUnit.id}
+        unitName={selectedUnit.name}
+        onLogoutUnit={() => setSelectedUnit(null)}
+      />
+    );
   }
 
   return (
@@ -877,7 +967,7 @@ const App: React.FC = () => {
             src="/logo.png"
             alt="Sara Store"
             className="w-32 h-32 object-contain mx-auto mb-6 drop-shadow-[0_0_25px_rgba(34,197,94,0.4)]"
-            onError={e => {
+            onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
           />
@@ -903,7 +993,7 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-            {units.map(unit => (
+            {units.map((unit) => (
               <button
                 key={unit.id}
                 onClick={() => {
@@ -914,7 +1004,7 @@ const App: React.FC = () => {
               >
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div
-                    onClick={e => handleDeleteUnit(e, unit.id)}
+                    onClick={(e) => handleDeleteUnit(e, unit.id)}
                     className="p-2 hover:bg-red-500/20 text-zinc-600 hover:text-red-500 rounded-full transition-colors"
                   >
                     <Trash2 size={14} />
@@ -932,6 +1022,7 @@ const App: React.FC = () => {
                 </div>
               </button>
             ))}
+
             <button
               onClick={() => setAddModalOpen(true)}
               className="group relative bg-zinc-950/30 hover:bg-zinc-900 border border-dashed border-zinc-800 hover:border-zinc-600 rounded-2xl p-6 transition-all flex flex-col items-center justify-center gap-4 text-center min-h-[160px]"
@@ -955,8 +1046,8 @@ const App: React.FC = () => {
               autoFocus
               type="password"
               value={loginPassword}
-              onChange={e => setLoginPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleConfirmLogin()}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmLogin()}
               className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white text-center tracking-widest outline-none focus:border-green-500 mb-4"
               placeholder="••••"
             />
@@ -986,7 +1077,7 @@ const App: React.FC = () => {
                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Nome da Regional</label>
                 <input
                   value={newUnitName}
-                  onChange={e => setNewUnitName(e.target.value)}
+                  onChange={(e) => setNewUnitName(e.target.value)}
                   className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-green-500"
                   placeholder="Ex: Bangu"
                 />
@@ -996,7 +1087,7 @@ const App: React.FC = () => {
                 <input
                   type="password"
                   value={newUnitPass}
-                  onChange={e => setNewUnitPass(e.target.value)}
+                  onChange={(e) => setNewUnitPass(e.target.value)}
                   className="w-full bg-black border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-green-500"
                   placeholder="Crie uma senha segura"
                 />
