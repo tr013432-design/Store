@@ -128,3 +128,13 @@ export interface Expense {
   date: string;        // Data ISO
   user: string;        // Quem lançou (Admin/Voluntário)
 }
+export interface VolunteerSchedule {
+  id: string;
+  unit_id?: string;
+  date: string;
+  serviceType: string;
+  volunteerName: string;
+  role?: string;
+  notes?: string;
+  created_at?: string;
+}
