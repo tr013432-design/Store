@@ -50,7 +50,15 @@ const money = (value: number) =>
 
 const normalizeName = (value: string) => String(value ?? '').trim();
 
-const parseSafeDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
+const parseSafeDate = (dateStr: string) => {
+  if (!dateStr) return new Date('2000-01-01T12:00:00');
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(`${dateStr}T12:00:00`);
+  }
+
+  return new Date(dateStr);
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({
   transactions,
@@ -61,7 +69,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // --- META MENSAL ---
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [tempGoal, setTempGoal] = useState('');
   const [goals, setGoals] = useState<Record<string, number>>({});
@@ -89,7 +96,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setIsEditingGoal(true);
   };
 
-  // --- NAVEGAÇÃO DE DATA ---
   const prevMonth = () =>
     setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1));
 
@@ -100,10 +106,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     .toUpperCase();
 
-  // --- FILTRO DE MÊS ---
   const monthTransactions = useMemo(() => {
     return transactions.filter((t) => {
-      const tDate = new Date(t.date);
+      const tDate = parseSafeDate(String(t.date));
       return (
         tDate.getMonth() === selectedDate.getMonth() &&
         tDate.getFullYear() === selectedDate.getFullYear()
@@ -121,7 +126,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   }, [schedules, selectedDate]);
 
-  // --- KPI FINANCEIROS ---
   const financialMetrics = useMemo(() => {
     let revenue = 0;
     let cost = 0;
@@ -142,7 +146,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return { revenue, cost, profit, margin };
   }, [monthTransactions, products]);
 
-  // --- ESTATÍSTICAS POR VOLUNTÁRIO (GERAL DO MÊS) ---
   const volunteerStats = useMemo(() => {
     const stats: Record<string, { revenue: number; count: number }> = {};
 
@@ -163,7 +166,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .sort((a, b) => b.revenue - a.revenue);
   }, [monthTransactions]);
 
-  // --- PREMIAÇÕES ---
   const awards = useMemo(() => {
     if (volunteerStats.length === 0) return null;
 
@@ -178,7 +180,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return { topRevenue, topSpeed, topTicket };
   }, [volunteerStats]);
 
-  // --- META POR CULTO E POR VOLUNTÁRIO BASEADA NA ESCALA ---
   const goalByService = useMemo(() => {
     type VolunteerRow = {
       assignmentCount: number;
@@ -195,7 +196,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     const serviceMap: Record<string, ServiceRow> = {};
 
-    // 1) Primeiro, monta a estrutura a partir da escala
     monthSchedules.forEach((schedule) => {
       const serviceName = normalizeName(schedule.serviceType || 'Outros');
       const volunteerName = normalizeName(schedule.volunteerName || 'Não Identificado');
@@ -222,7 +222,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       serviceMap[serviceName].volunteers[volunteerName].assignmentCount += 1;
     });
 
-    // 2) Depois, injeta as vendas do mês
     monthTransactions.forEach((transaction) => {
       const serviceName = normalizeName(transaction.serviceType || 'Outros');
       const volunteerName = normalizeName(transaction.volunteerName || 'Não Identificado');
@@ -311,7 +310,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const totalGoalProgress =
     currentGoal > 0 ? Math.min((financialMetrics.revenue / currentGoal) * 100, 100) : 0;
 
-  // --- EVOLUÇÃO DIÁRIA ---
   const dailyData = useMemo(() => {
     const daysInMonth = new Date(
       selectedDate.getFullYear(),
@@ -325,14 +323,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }));
 
     monthTransactions.forEach((t) => {
-      const day = new Date(t.date).getDate();
+      const day = parseSafeDate(String(t.date)).getDate();
       if (data[day - 1]) data[day - 1].revenue += Number(t.total || 0);
     });
 
     return data;
   }, [monthTransactions, selectedDate]);
 
-  // --- MIX POR CATEGORIA ---
   const salesByCategory = useMemo(() => {
     const categories: Record<string, number> = {};
 
@@ -348,7 +345,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .sort((a, b) => b.value - a.value);
   }, [monthTransactions]);
 
-  // --- IA ---
   useEffect(() => {
     const fetchInsight = async () => {
       if (monthTransactions.length > 5) {
@@ -393,6 +389,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
           >
             <ChevronRight size={20} />
           </button>
+        </div>
+      </div>
+
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-2">
+          Debug do dashboard
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+          <div className="bg-black/40 border border-zinc-800 rounded-xl p-3">
+            <p className="text-zinc-500 text-xs">Transações totais</p>
+            <p className="text-white font-black">{transactions.length}</p>
+          </div>
+          <div className="bg-black/40 border border-zinc-800 rounded-xl p-3">
+            <p className="text-zinc-500 text-xs">Transações no mês</p>
+            <p className="text-white font-black">{monthTransactions.length}</p>
+          </div>
+          <div className="bg-black/40 border border-zinc-800 rounded-xl p-3">
+            <p className="text-zinc-500 text-xs">Escalas no mês</p>
+            <p className="text-white font-black">{monthSchedules.length}</p>
+          </div>
+          <div className="bg-black/40 border border-zinc-800 rounded-xl p-3">
+            <p className="text-zinc-500 text-xs">Mês selecionado</p>
+            <p className="text-white font-black">{formattedMonth}</p>
+          </div>
         </div>
       </div>
 
@@ -442,17 +462,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </button>
                 </div>
               ) : (
-                <div
-                  className="flex items-center gap-2 group cursor-pointer"
-                  onClick={startEditing}
-                >
+                <div className="flex items-center gap-2 group cursor-pointer" onClick={startEditing}>
                   <span className="text-xs font-semibold text-zinc-300">
                     {currentGoal > 0 ? money(currentGoal) : 'Definir'}
                   </span>
-                  <Edit3
-                    size={12}
-                    className="text-zinc-600 group-hover:text-green-500 transition-colors"
-                  />
+                  <Edit3 size={12} className="text-zinc-600 group-hover:text-green-500 transition-colors" />
                 </div>
               )}
             </div>
@@ -496,11 +510,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wide">
               Margem Real
             </p>
-            <span
-              className={`text-xs font-bold ${
-                financialMetrics.margin > 20 ? 'text-emerald-400' : 'text-yellow-500'
-              }`}
-            >
+            <span className={`text-xs font-bold ${financialMetrics.margin > 20 ? 'text-emerald-400' : 'text-yellow-500'}`}>
               {financialMetrics.margin.toFixed(1)}%
             </span>
           </div>
@@ -528,9 +538,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             ) : insight ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
-                    Diagnóstico
-                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Diagnóstico</p>
                   <p className="text-sm font-medium leading-relaxed text-zinc-300">
                     "{insight.insight}"
                   </p>
@@ -544,8 +552,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </p>
                   </div>
                   <p className="text-sm font-medium leading-relaxed text-zinc-100">
-                    {insight.suggestion ||
-                      'Continue vendendo para gerar novas estratégias.'}
+                    {insight.suggestion || 'Continue vendendo para gerar novas estratégias.'}
                   </p>
                 </div>
               </div>
@@ -592,14 +599,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
                     <div>
-                      <h4 className="text-white font-black text-lg">
-                        {service.serviceName}
-                      </h4>
+                      <h4 className="text-white font-black text-lg">{service.serviceName}</h4>
                       <p className="text-zinc-500 text-sm">
                         {service.assignmentCount} escala(s) no mês • meta do culto:{' '}
-                        <span className="text-zinc-300 font-bold">
-                          {money(service.serviceGoal)}
-                        </span>
+                        <span className="text-zinc-300 font-bold">{money(service.serviceGoal)}</span>
                       </p>
                     </div>
 
@@ -619,9 +622,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               ? 'bg-gradient-to-r from-emerald-500 to-green-400'
                               : 'bg-gradient-to-r from-blue-500 to-cyan-400'
                           }`}
-                          style={{
-                            width: `${Math.min(service.serviceProgress || 0, 100)}%`
-                          }}
+                          style={{ width: `${Math.min(service.serviceProgress || 0, 100)}%` }}
                         />
                       </div>
                     </div>
@@ -635,9 +636,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-white font-bold text-sm">
-                              {volunteer.name}
-                            </p>
+                            <p className="text-white font-bold text-sm">{volunteer.name}</p>
                             <p className="text-zinc-500 text-xs mt-1">
                               {volunteer.assignmentCount} escala(s) • {volunteer.saleCount} venda(s)
                             </p>
@@ -657,16 +656,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="mt-4 space-y-2">
                           <div className="flex justify-between text-xs">
                             <span className="text-zinc-500">Faturado</span>
-                            <span className="text-white font-bold">
-                              {money(volunteer.revenue)}
-                            </span>
+                            <span className="text-white font-bold">{money(volunteer.revenue)}</span>
                           </div>
 
                           <div className="flex justify-between text-xs">
                             <span className="text-zinc-500">Meta pessoal</span>
-                            <span className="text-green-400 font-bold">
-                              {money(volunteer.goal)}
-                            </span>
+                            <span className="text-green-400 font-bold">{money(volunteer.goal)}</span>
                           </div>
 
                           <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
@@ -676,20 +671,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   ? 'bg-gradient-to-r from-emerald-500 to-green-400'
                                   : 'bg-gradient-to-r from-yellow-500 to-orange-400'
                               }`}
-                              style={{
-                                width: `${Math.min(volunteer.progress || 0, 100)}%`
-                              }}
+                              style={{ width: `${Math.min(volunteer.progress || 0, 100)}%` }}
                             />
                           </div>
 
                           <div className="text-right text-[11px] font-bold">
-                            <span
-                              className={
-                                volunteer.progress >= 100
-                                  ? 'text-emerald-400'
-                                  : 'text-yellow-400'
-                              }
-                            >
+                            <span className={volunteer.progress >= 100 ? 'text-emerald-400' : 'text-yellow-400'}>
                               {volunteer.progress.toFixed(1)}%
                             </span>
                           </div>
@@ -723,9 +710,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   O Vendedor (Receita)
                 </p>
                 <p className="text-lg font-bold text-white">{awards.topRevenue.name}</p>
-                <p className="text-xs text-zinc-400">
-                  {money(awards.topRevenue.revenue)} vendidos
-                </p>
+                <p className="text-xs text-zinc-400">{money(awards.topRevenue.revenue)} vendidos</p>
               </div>
               <div className="absolute -right-4 -bottom-4 text-yellow-500/10">
                 <Trophy size={80} />
@@ -741,9 +726,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   O Rápido (Volume)
                 </p>
                 <p className="text-lg font-bold text-white">{awards.topSpeed.name}</p>
-                <p className="text-xs text-zinc-400">
-                  {awards.topSpeed.count} vendas realizadas
-                </p>
+                <p className="text-xs text-zinc-400">{awards.topSpeed.count} vendas realizadas</p>
               </div>
               <div className="absolute -right-4 -bottom-4 text-blue-500/10">
                 <Zap size={80} />
@@ -759,9 +742,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   Ticket de Ouro (Média)
                 </p>
                 <p className="text-lg font-bold text-white">{awards.topTicket.name}</p>
-                <p className="text-xs text-zinc-400">
-                  {money(awards.topTicket.ticket)} por cliente
-                </p>
+                <p className="text-xs text-zinc-400">{money(awards.topTicket.ticket)} por cliente</p>
               </div>
               <div className="absolute -right-4 -bottom-4 text-purple-500/10">
                 <Diamond size={80} />
@@ -776,10 +757,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={volunteerStats}
-                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-              >
+              <BarChart data={volunteerStats} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
                 <XAxis
                   dataKey="name"
@@ -789,10 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   textAnchor="end"
                   height={60}
                 />
-                <YAxis
-                  tick={{ fill: '#71717a', fontSize: 10 }}
-                  tickFormatter={(val) => `R$${val}`}
-                />
+                <YAxis tick={{ fill: '#71717a', fontSize: 10 }} tickFormatter={(val) => `R$${val}`} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#18181b',
@@ -805,10 +780,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 />
                 <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]}>
                   {volunteerStats.map((_, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={index === 0 ? '#eab308' : '#3b82f6'}
-                    />
+                    <Cell key={`cell-${index}`} fill={index === 0 ? '#eab308' : '#3b82f6'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -889,11 +861,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   dataKey="value"
                 >
                   {salesByCategory.map((_, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                      stroke="none"
-                    />
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
                   ))}
                 </Pie>
                 <Tooltip
