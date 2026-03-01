@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Product, Customer, DailyReport, ReportItem, PaymentMethod } from '../types';
 import {
   Search,
@@ -52,6 +52,8 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
   const [isScanning, setIsScanning] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scannerBufferRef = useRef('');
+  const lastScannerKeyTimeRef = useRef(0);
 
   const normalizedPhone = digitsOnly(customerPhone);
 
@@ -97,13 +99,25 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
     return { totalCash, totalPix, totalDebit, totalCredit, grandTotal };
   }, [items]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   const resetProductForm = () => {
     setSelectedProduct(null);
     setSearchTerm('');
     setQuantity(1);
     setCustomerName('');
     setCustomerPhone('');
-    setTimeout(() => searchInputRef.current?.focus(), 100);
+    scannerBufferRef.current = '';
+
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
   };
 
   const handleSelectProduct = (product: Product) => {
@@ -112,18 +126,37 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
     setQuantity(1);
   };
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter') return;
+  const findProduct = (rawValue: string) => {
+    const term = String(rawValue ?? '').trim().toLowerCase();
+    if (!term) return null;
 
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return;
-
-    const found =
+    return (
       products.find(
         (p) =>
           String((p as any).barcode ?? '').toLowerCase() === term ||
           String(p.name ?? '').toLowerCase() === term
-      ) ?? filteredProducts[0];
+      ) ??
+      products.find((p) => String((p as any).barcode ?? '').toLowerCase().includes(term)) ??
+      products.find((p) => String(p.name ?? '').toLowerCase().includes(term)) ??
+      null
+    );
+  };
+
+  const processScannedCode = (code: string) => {
+    const found = findProduct(code);
+
+    if (!found) {
+      alert(`Produto com código ${code} não encontrado.`);
+      return;
+    }
+
+    handleSelectProduct(found);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+
+    const found = findProduct(searchTerm);
 
     if (found) {
       handleSelectProduct(found);
@@ -132,8 +165,46 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
     }
   };
 
+  useEffect(() => {
+    const handleGlobalScanner = (e: KeyboardEvent) => {
+      if (isScanning) return;
+      if (selectedProduct) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const now = Date.now();
+      const timeGap = now - lastScannerKeyTimeRef.current;
+
+      if (timeGap > 80) {
+        scannerBufferRef.current = '';
+      }
+
+      if (e.key === 'Enter') {
+        if (scannerBufferRef.current.length >= 3) {
+          e.preventDefault();
+          e.stopPropagation();
+          processScannedCode(scannerBufferRef.current);
+          scannerBufferRef.current = '';
+        }
+        return;
+      }
+
+      if (e.key.length === 1) {
+        scannerBufferRef.current += e.key;
+        lastScannerKeyTimeRef.current = now;
+
+        if (scannerBufferRef.current.length > 60) {
+          scannerBufferRef.current = scannerBufferRef.current.slice(-60);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalScanner, true);
+    return () => window.removeEventListener('keydown', handleGlobalScanner, true);
+  }, [isScanning, selectedProduct, products]);
+
   const handleScanSuccess = (code: string) => {
     const found = products.find((p) => String((p as any).barcode ?? '') === String(code));
+
     if (!found) {
       alert(`Produto com código ${code} não encontrado.`);
       setIsScanning(false);
@@ -307,6 +378,15 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
             <Package size={20} className="text-green-500" />
             Nova venda
           </h3>
+
+          <div className="rounded-xl border border-green-500/20 bg-green-500/5 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-green-400">
+              Leitor físico ativo
+            </p>
+            <p className="text-xs text-zinc-400 mt-1">
+              Pode bipar o código direto sem clicar na busca.
+            </p>
+          </div>
 
           <div className="flex gap-2">
             <div className="relative flex-1">
