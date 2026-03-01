@@ -59,9 +59,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
 
   const matchedCustomer = useMemo(() => {
     if (!normalizedPhone) return null;
-    return (
-      customers.find((c) => digitsOnly((c as any).phone ?? '') === normalizedPhone) ?? null
-    );
+    return customers.find((c) => digitsOnly((c as any).phone ?? '') === normalizedPhone) ?? null;
   }, [customers, normalizedPhone]);
 
   const filteredProducts = useMemo(() => {
@@ -226,20 +224,15 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
       return;
     }
 
-    if (!customerPhone.trim()) {
-      alert('Informe o telefone do cliente.');
-      return;
-    }
-
     const cleanPhone = digitsOnly(customerPhone);
-    if (!cleanPhone) {
-      alert('Telefone inválido.');
-      return;
-    }
-
     const total = Number(selectedProduct.price) * quantity;
 
     if (paymentMethod === 'Sara Points') {
+      if (!cleanPhone) {
+        alert('Para usar Sara Points, informe o telefone do cliente.');
+        return;
+      }
+
       if (!matchedCustomer) {
         alert('Cliente não encontrado para resgate com Sara Points.');
         return;
@@ -260,7 +253,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
       total,
       paymentMethod,
       checked: true,
-      customerPhone: cleanPhone
+      customerPhone: cleanPhone || ''
     };
 
     setItems((prev) => [newItem, ...prev]);
@@ -303,12 +296,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
 
   return (
     <div className="flex flex-col h-full gap-6 pb-24 lg:pb-0">
-      {isScanning && (
-        <BarcodeScanner
-          onScan={handleScanSuccess}
-          onClose={() => setIsScanning(false)}
-        />
-      )}
+      {isScanning && <BarcodeScanner onScan={handleScanSuccess} onClose={() => setIsScanning(false)} />}
 
       <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
@@ -466,9 +454,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
                   >
                     <Minus size={14} />
                   </button>
-                  <span className="w-10 text-center font-bold text-sm text-white">
-                    {quantity}
-                  </span>
+                  <span className="w-10 text-center font-bold text-sm text-white">{quantity}</span>
                   <button
                     onClick={() => setQuantity(quantity + 1)}
                     className="p-2 hover:bg-zinc-800 text-zinc-400 rounded"
@@ -482,9 +468,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
               </div>
 
               <div className="space-y-3 bg-black p-3 rounded-xl border border-zinc-800">
-                <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">
-                  Dados do cliente
-                </p>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Dados do cliente</p>
 
                 <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
                   <User size={16} className="text-zinc-600" />
@@ -501,7 +485,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
                   <input
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="Telefone (obrigatório)"
+                    placeholder="Telefone (opcional)"
                     className="bg-transparent w-full text-sm outline-none text-white placeholder-zinc-700"
                   />
                 </div>
@@ -526,9 +510,13 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
                         </p>
                       </div>
                     </div>
-                  ) : (
+                  ) : customerPhone.trim() ? (
                     <p className="text-xs text-zinc-500">
                       Cliente ainda não encontrado na fidelidade. A venda pode ser lançada normalmente.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      Telefone opcional. Só é necessário para identificar cliente na fidelidade ou usar Sara Points.
                     </p>
                   )}
                 </div>
@@ -578,9 +566,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
 
         <div className="lg:col-span-2 bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col overflow-hidden">
           <div className="p-4 bg-black/50 border-b border-zinc-800 flex justify-between items-center">
-            <h3 className="font-bold text-white uppercase tracking-wide">
-              Itens da venda
-            </h3>
+            <h3 className="font-bold text-white uppercase tracking-wide">Itens da venda</h3>
             <span className="text-[10px] bg-green-500/20 text-green-500 px-2 py-1 rounded-full font-bold uppercase tracking-widest">
               {items.length} itens
             </span>
@@ -609,9 +595,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
                       <span className="text-white">{item.productName}</span>
                     </td>
                     <td className="p-4">
-                      <div className="text-xs text-zinc-300">
-                        {item.customerPhone || '-'}
-                      </div>
+                      <div className="text-xs text-zinc-300">{item.customerPhone || '-'}</div>
                     </td>
                     <td className="p-4 text-right font-bold text-white">
                       R$ {Number(item.total).toFixed(2)}
@@ -630,9 +614,7 @@ export const VolunteerSales: React.FC<VolunteerSalesProps> = ({
             </table>
 
             {items.length === 0 && (
-              <div className="p-10 text-center text-zinc-600 text-sm">
-                Nenhum item lançado.
-              </div>
+              <div className="p-10 text-center text-zinc-600 text-sm">Nenhum item lançado.</div>
             )}
           </div>
 
@@ -690,14 +672,10 @@ const SummaryCard = ({
 }) => (
   <div
     className={`rounded-xl border px-3 py-3 ${
-      highlight
-        ? 'border-green-500/30 bg-green-500/10'
-        : 'border-zinc-800 bg-zinc-950/70'
+      highlight ? 'border-green-500/30 bg-green-500/10' : 'border-zinc-800 bg-zinc-950/70'
     }`}
   >
-    <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-      {label}
-    </p>
+    <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">{label}</p>
     <p className={`text-sm font-black ${highlight ? 'text-green-400' : 'text-white'}`}>
       R$ {Number(value).toFixed(2)}
     </p>
