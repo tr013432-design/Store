@@ -1,6 +1,5 @@
-// src/types.ts
+// types.ts — VERSÃO CORRIGIDA
 
-// 1. CATEGORIAS (Focadas nos produtos da Sara Store)
 export enum Category {
   BOOKS_BIBLES = 'Livros e Bíblias',
   CLOTHING = 'Vestuário (Camisas/Bonés)',
@@ -13,7 +12,7 @@ export interface Product {
   id: string;
   name: string;
   price: number;
-  costPrice?: number; // Essencial para o cálculo de Lucro Real
+  costPrice?: number;
   category: Category;
   stock: number;
   imageUrl?: string;
@@ -24,26 +23,33 @@ export interface CartItem extends Product {
   quantity: number;
 }
 
-// 2. CLIENTE (Completo com Equipe e Igreja)
+export interface CustomerHistoryEntry {
+  date: string;
+  description: string;
+  value: number;
+  pointsEarned: number;
+}
+
 export interface Customer {
-  id: string; // ID é o telefone (apenas números)
+  id: string;
   name: string;
-  phone: string; // Telefone formatado (visual)
-  team?: string;   // Equipe
-  church?: string; // Igreja
+  phone: string;
+  team?: string;
+  church?: string;
   points: number;
   totalSpent: number;
   lastPurchase: string;
-  history: {
-    date: string;
-    description: string;
-    value: number;
-    pointsEarned: number;
-  }[];
+  history?: CustomerHistoryEntry[];
 }
 
-// 3. PAGAMENTOS (Incluindo Sara Points)
-export type PaymentMethod = 'Dinheiro' | 'Cartão Débito' | 'Cartão Crédito (1x)' | 'Cartão Crédito (2x)' | 'Cartão Crédito (3x)' | 'Pix' | 'Sara Points';
+export type PaymentMethod =
+  | 'Dinheiro'
+  | 'Cartão Débito'
+  | 'Cartão Crédito (1x)'
+  | 'Cartão Crédito (2x)'
+  | 'Cartão Crédito (3x)'
+  | 'Pix'
+  | 'Sara Points';
 
 export interface ReportItem {
   productName: string;
@@ -51,7 +57,7 @@ export interface ReportItem {
   total: number;
   paymentMethod: PaymentMethod;
   checked?: boolean;
-  customerPhone?: string; // Essencial para pontuar direto no relatório
+  customerPhone?: string;
 }
 
 export interface DailyReport {
@@ -62,7 +68,7 @@ export interface DailyReport {
   time: string;
   items: ReportItem[];
   notes: string;
-  status: 'PENDENTE' | 'VALIDADO';
+  status: 'PENDENTE' | 'VALIDADO' | 'DESVALIDADO';
   validatedBy?: string;
   totalCash: number;
   totalPix: number;
@@ -82,6 +88,7 @@ export interface OrderItem {
   customerPhone: string;
   checked?: boolean;
   delivered?: boolean;
+  deliveredAt?: string;
 }
 
 export interface OrderSheet {
@@ -90,7 +97,7 @@ export interface OrderSheet {
   serviceType: string;
   date: string;
   items: OrderItem[];
-  status: 'PENDENTE' | 'ENTREGUE';
+  status: 'PENDENTE' | 'ENTREGUE' | 'DESVALIDADO';
   validatedBy?: string;
   totalCash: number;
   totalPix: number;
@@ -104,30 +111,31 @@ export interface Transaction {
   date: string;
   items: CartItem[];
   total: number;
+  totalCost?: number;
   paymentMethod: PaymentMethod;
-  // Campos vitais para o Dashboard e Gamificação
   volunteerName?: string;
   serviceType?: string;
 }
 
+// ✅ CORRIGIDO: sem campo password
 export interface AdminUser {
   id: string;
   name: string;
   email: string;
-  password: string;
+  role?: string;
 }
 
-// --- NOVO: GESTÃO DE DESPESAS E SANGRIA ---
 export type ExpenseType = 'DESPESA' | 'SANGRIA';
 
 export interface Expense {
   id: string;
-  description: string; // Ex: "Sacolas", "Frete", "Material de Limpeza"
-  amount: number;      // Valor R$
-  type: ExpenseType;   // DESPESA (Gasto que reduz lucro) ou SANGRIA (Retirada de caixa)
-  date: string;        // Data ISO
-  user: string;        // Quem lançou (Admin/Voluntário)
+  description: string;
+  amount: number;
+  type: ExpenseType;
+  date: string;
+  user: string;
 }
+
 export interface VolunteerSchedule {
   id: string;
   unit_id?: string;
@@ -137,4 +145,15 @@ export interface VolunteerSchedule {
   role?: string;
   notes?: string;
   created_at?: string;
+}
+
+// ✅ NOVO: configurações da unidade persistidas no Supabase
+export interface UnitSettings {
+  id?: string;
+  unit_id: string;
+  volunteers: string[];
+  services: string[];
+  points_config: Record<string, number>;
+  points_value: number;
+  updated_at?: string;
 }
