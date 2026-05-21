@@ -77,7 +77,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [admins, setAdmins] = useState<AdminUser[]>([]);
 
-  // ✅ Configurações persistidas no Supabase
   const [pointsConfig, setPointsConfigState] = useState<Record<string, number>>(DEFAULT_POINTS_CONFIG);
   const [pointsValue,  setPointsValueState]  = useState<number>(0.1);
   const [availableVolunteers, setAvailableVolunteersState] = useState<string[]>(DEFAULT_VOLUNTEERS);
@@ -85,16 +84,12 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // ✅ Auth via Supabase Auth
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass,  setLoginPass]  = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  // =====================================================
-  // FETCH
-  // =====================================================
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -126,7 +121,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       if (scheduleData) setSchedules(scheduleData as VolunteerScheduleItem[]);
       if (adminsData)   setAdmins(adminsData as AdminUser[]);
 
-      // ✅ Configurações persistidas
       if (settingsData) {
         if (settingsData.volunteers?.length)    setAvailableVolunteersState(settingsData.volunteers);
         if (settingsData.services?.length)      setAvailableServicesState(settingsData.services);
@@ -142,9 +136,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // =====================================================
-  // TRANSAÇÕES DERIVADAS (com custo real)
-  // =====================================================
   useEffect(() => {
     const calcCost = (items: any[]) => (items || []).reduce((acc: number, item: any) => {
       const prod = products.find((p: any) => p.name === item.productName);
@@ -163,9 +154,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     setTransactions([...txReports, ...txOrders]);
   }, [reports, orders, products]);
 
-  // =====================================================
-  // PERSISTIR CONFIGURAÇÕES
-  // =====================================================
   const persistSettings = useCallback(async (
     volunteers: string[], services: string[],
     config: Record<string, number>, value: number,
@@ -181,20 +169,13 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const setPointsConfig = async (c: Record<string, number>) => { setPointsConfigState(c); await persistSettings(availableVolunteers, availableServices, c, pointsValue); };
   const setPointsValue  = async (v: number) => { setPointsValueState(v); await persistSettings(availableVolunteers, availableServices, pointsConfig, v); };
 
-  // =====================================================
-  // AUTH — SUPABASE AUTH
-  // =====================================================
   const handleDashboardLogin = async () => {
     setIsLoadingLogin(true); setLoginError('');
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
       if (error) { setLoginError('Email ou senha incorretos.'); return; }
-
       const { data: adminRecord } = await supabase.from('app_admins').select('*').eq('unit_id', unitId).maybeSingle();
-      if (!adminRecord) {
-        setLoginError('Sem permissão para esta unidade.');
-        await supabase.auth.signOut(); return;
-      }
+      if (!adminRecord) { setLoginError('Sem permissão para esta unidade.'); await supabase.auth.signOut(); return; }
       setIsAdminAuthenticated(true); setLoginEmail(''); setLoginPass('');
     } catch { setLoginError('Erro ao fazer login.'); }
     finally { setIsLoadingLogin(false); }
@@ -202,9 +183,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const handleLockDashboard = async () => { await supabase.auth.signOut(); setIsAdminAuthenticated(false); };
 
-  // =====================================================
-  // FIDELIDADE
-  // =====================================================
   const ensureCustomerByPhone = async (phoneRaw: string, nameRaw?: string) => {
     const phone = digitsOnly(phoneRaw); if (!phone) return null;
     const existing = customers.find(c => digitsOnly(c.phone) === phone);
@@ -229,21 +207,14 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     let cust = customers.find(c => digitsOnly(c.phone) === phone) ?? null;
     if (!cust) cust = await ensureCustomerByPhone(phone);
     if (!cust) return;
-
     const newPoints  = safeNum(cust.points, 0) + delta;
     const newSpent   = safeNum(cust.totalSpent, 0) + safeNum(extra?.addSpent, 0);
     const lastPurchase = extra?.lastPurchase || new Date().toISOString();
-
     const { error } = await supabase.from('customers').update({ points: newPoints, totalSpent: newSpent, lastPurchase }).eq('id', cust.id);
     if (error) { alert('Erro ao atualizar pontos: ' + error.message); return; }
-
     setCustomers(prev => prev.map(c => String(c.id) === String(cust!.id) ? { ...c, points: newPoints, totalSpent: newSpent, lastPurchase } : c));
-
     if (extra?.historyEntry && delta > 0) {
-      await supabase.from('customer_history').insert([{
-        customer_id: cust.id, unit_id: unitId, date: lastPurchase,
-        description: extra.historyEntry.description, value: extra.historyEntry.value, points_earned: Math.max(0, delta),
-      }]);
+      await supabase.from('customer_history').insert([{ customer_id: cust.id, unit_id: unitId, date: lastPurchase, description: extra.historyEntry.description, value: extra.historyEntry.value, points_earned: Math.max(0, delta) }]);
     }
   };
 
@@ -259,16 +230,10 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const extractIdentifierFromReport = (rep: any) => extractPhoneFromAny(rep) || extractPhoneFromAny(rep?.customer) || String(rep?.customerId ?? rep?.customer_id ?? '');
 
-  // =====================================================
-  // CRUD — PRODUTOS
-  // =====================================================
   const handleAddProduct    = async (prod: Product) => { const { id, ...np } = prod as any; const { data, error } = await supabase.from('products').insert([{ ...np, unit_id: unitId }]).select().single(); if (data) setProducts(prev => [data as any, ...prev]); if (error) alert('Erro: ' + error.message); };
   const handleUpdateProduct = async (prod: Product) => { const { error } = await supabase.from('products').update(prod as any).eq('id', (prod as any).id); if (!error) setProducts(prev => prev.map(p => (p as any).id === (prod as any).id ? prod : p)); else alert('Erro: ' + error.message); };
   const handleDeleteProduct = async (id: string)  => { const { error } = await supabase.from('products').delete().eq('id', id); if (!error) setProducts(prev => prev.filter(p => (p as any).id !== id)); };
 
-  // =====================================================
-  // CRUD — RELATÓRIOS
-  // =====================================================
   const handleReportSubmit = async (d: any) => {
     const { data, error } = await supabase.from('reports').insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }]).select().single();
     if (data) { setReports(prev => [data as any, ...prev]); const phone = extractPhoneFromAny(d); if (phone) await ensureCustomerByPhone(phone, d?.customerName); alert('Venda enviada para validação!'); }
@@ -278,11 +243,9 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
   const handleValidateReport = async (id: string, admin: string) => {
     const { error } = await supabase.from('reports').update({ status: 'VALIDADO', validated_by: admin }).eq('id', id);
     if (error) return alert('Erro ao validar: ' + error.message);
-
     const rep = reports.find((r: any) => String(r.id) === String(id)) as any;
     if (!rep) return;
     setReports(prev => prev.map((r: any) => String(r.id) === String(id) ? { ...r, status: 'VALIDADO', validatedBy: admin } : r));
-
     for (const item of rep.items || []) {
       const product = products.find((p: any) => p.name === item.productName);
       if (product) {
@@ -291,15 +254,10 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
         setProducts(prev => prev.map(p => (p as any).id === (product as any).id ? { ...p, stock: newStock } : p));
       }
     }
-
     const identifier = extractIdentifierFromReport(rep);
     if (!identifier) return;
-
-    const phoneForEnsure = looksLikeUUID(identifier)
-      ? digitsOnly(customers.find(c => String(c.id) === identifier)?.phone)
-      : digitsOnly(identifier);
+    const phoneForEnsure = looksLikeUUID(identifier) ? digitsOnly(customers.find(c => String(c.id) === identifier)?.phone) : digitsOnly(identifier);
     if (phoneForEnsure) await ensureCustomerByPhone(phoneForEnsure, rep?.customerName);
-
     const earned = computePointsFromItems(rep.items || []);
     if (earned > 0) await updateCustomerPoints(identifier, earned, {
       addSpent: safeNum(rep.grandTotal, 0),
@@ -308,14 +266,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     });
   };
 
-  // ✅ Handler implementado — reverte estoque
   const handleUnvalidateReport = async (id: string) => {
     const rep = reports.find((r: any) => String(r.id) === String(id)) as any;
     if (!rep || rep.status !== 'VALIDADO') return;
-
     const { error } = await supabase.from('reports').update({ status: 'DESVALIDADO', validated_by: null }).eq('id', id);
     if (error) return alert('Erro ao desvalidar: ' + error.message);
-
     for (const item of rep.items || []) {
       const product = products.find((p: any) => p.name === item.productName);
       if (product) {
@@ -324,12 +279,10 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
         setProducts(prev => prev.map(p => (p as any).id === (product as any).id ? { ...p, stock: newStock } : p));
       }
     }
-
     setReports(prev => prev.map((r: any) => String(r.id) === String(id) ? { ...r, status: 'DESVALIDADO', validatedBy: null } : r));
     alert('Relatório desvalidado. Estoque revertido.');
   };
 
-  // ✅ Handler implementado — toggle com persistência
   const handleToggleReportItem = async (id: string, idx: number) => {
     const rep = reports.find((r: any) => String(r.id) === String(id)) as any; if (!rep) return;
     const updatedItems = (rep.items || []).map((item: any, i: number) => i === idx ? { ...item, checked: !item.checked } : item);
@@ -338,9 +291,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     setReports(prev => prev.map((r: any) => String(r.id) === String(id) ? { ...r, items: updatedItems } : r));
   };
 
-  // =====================================================
-  // CRUD — ENCOMENDAS
-  // =====================================================
   const handleOrderSubmit = async (d: any) => {
     const { data, error } = await supabase.from('orders').insert([{ ...d, unit_id: unitId, status: 'PENDENTE' }]).select().single();
     if (data) { setOrders(prev => [data as any, ...prev]); alert('Encomenda registrada!'); }
@@ -354,7 +304,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     alert('Encomenda entregue!');
   };
 
-  // ✅ Handler implementado
   const handleUnvalidateOrder = async (id: string) => {
     const { error } = await supabase.from('orders').update({ status: 'DESVALIDADO', validated_by: null }).eq('id', id);
     if (error) return alert('Erro ao desvalidar encomenda: ' + error.message);
@@ -362,7 +311,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     alert('Encomenda desvalidada.');
   };
 
-  // ✅ Handler implementado
   const handleToggleOrderItem = async (id: string, idx: number) => {
     const ord = orders.find((o: any) => String(o.id) === String(id)) as any; if (!ord) return;
     const updatedItems = (ord.items || []).map((item: any, i: number) => i === idx ? { ...item, checked: !item.checked } : item);
@@ -384,9 +332,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
     setOrders(prev => prev.map((o: any) => String(o.id) === String(orderId) ? { ...o, items: updatedItems } : o));
   };
 
-  // =====================================================
-  // CRUD — DESPESAS, CLIENTES, ESCALAS
-  // =====================================================
   const handleAddExpense    = async (e: Expense) => { const { data, error } = await supabase.from('expenses').insert([{ ...(e as any), unit_id: unitId }]).select().single(); if (data) setExpenses(prev => [data as any, ...prev]); if (error) alert('Erro: ' + error.message); };
   const handleDeleteExpense = async (id: string)  => { const { error } = await supabase.from('expenses').delete().eq('id', id); if (!error) setExpenses(prev => prev.filter((e: any) => (e as any).id !== id)); };
 
@@ -421,9 +366,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   const pendingCount = reports.filter((r: any) => r.status === 'PENDENTE').length + orders.filter((o: any) => o.status === 'PENDENTE').length;
 
-  // =====================================================
-  // NAV
-  // =====================================================
   const NavItem = ({ view, icon: Icon, label, badge }: any) => {
     const active = currentView === view;
     return (
@@ -444,11 +386,11 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
       <div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 px-4">Operacional</p>
         <div className="space-y-1">
-          <NavItem view={View.VOLUNTEER_REPORT}  icon={Store}      label="Venda Balcão" />
+          <NavItem view={View.VOLUNTEER_REPORT}  icon={Store}        label="Venda Balcão" />
           <NavItem view={View.VOLUNTEER_SCHEDULE} icon={CalendarDays} label="Escala" />
-          <NavItem view={View.ORDERS}            icon={ShoppingBag} label="Encomendas" />
-          <NavItem view={View.CUSTOMERS}         icon={Users}       label="Clientes" />
-          <NavItem view={View.INVENTORY}         icon={Package}     label="Estoque" />
+          <NavItem view={View.ORDERS}            icon={ShoppingBag}  label="Encomendas" />
+          <NavItem view={View.CUSTOMERS}         icon={Users}        label="Clientes" />
+          <NavItem view={View.INVENTORY}         icon={Package}      label="Estoque" />
         </div>
       </div>
       <div>
@@ -486,8 +428,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 
   return (
     <div className="min-h-screen bg-zinc-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black text-zinc-100 font-sans selection:bg-green-500/30 selection:text-green-200">
-
-      {/* Sidebar Desktop */}
       <aside className="hidden lg:flex flex-col w-72 bg-black/40 border-r border-white/5 p-4 fixed h-full z-20 backdrop-blur-xl">
         <div className="flex flex-col items-center mb-6 pt-4 relative">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-green-500/20 blur-[60px] rounded-full pointer-events-none" />
@@ -506,7 +446,6 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
         </div>
       </aside>
 
-      {/* Header Mobile */}
       <div className="lg:hidden fixed top-0 w-full bg-black/80 backdrop-blur-md z-30 border-b border-white/10 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <img src="/logo.png" className="w-10 h-10" alt="Logo" />
@@ -559,6 +498,8 @@ const StoreSystem: React.FC<{ unitId: string; unitName: string; onLogoutUnit: ()
 // =====================================================
 // APP — SELETOR DE UNIDADE
 // =====================================================
+const MASTER_PASSWORD = 'STORE';
+
 const App: React.FC = () => {
   const [units, setUnits] = useState<RegionalUnit[]>([]);
   const [selectedUnit, setSelectedUnit] = useState<RegionalUnit | null>(null);
@@ -569,6 +510,14 @@ const App: React.FC = () => {
   const [unitLoginError,    setUnitLoginError]    = useState('');
   const [pendingUnit,       setPendingUnit]       = useState<RegionalUnit | null>(null);
   const [isCheckingPassword, setIsCheckingPassword] = useState(false);
+
+  const [showNewUnit,     setShowNewUnit]     = useState(false);
+  const [newUnitName,     setNewUnitName]     = useState('');
+  const [newUnitId,       setNewUnitId]       = useState('');
+  const [newUnitPassword, setNewUnitPassword] = useState('');
+  const [newUnitColor,    setNewUnitColor]    = useState('#22c55e');
+  const [savingUnit,      setSavingUnit]      = useState(false);
+  const [newUnitError,    setNewUnitError]    = useState('');
 
   useEffect(() => {
     (async () => {
@@ -585,9 +534,12 @@ const App: React.FC = () => {
     if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt.userChoice.then(() => setDeferredPrompt(null)); }
   };
 
-  // ✅ Verificação de senha via RPC do Supabase (bcrypt no banco)
   const handleUnitLogin = async () => {
     if (!pendingUnit) return;
+    // Senha mestra — abre qualquer unidade
+    if (unitPasswordInput === MASTER_PASSWORD) {
+      setSelectedUnit(pendingUnit); setPendingUnit(null); setUnitPasswordInput(''); return;
+    }
     setIsCheckingPassword(true); setUnitLoginError('');
     try {
       const { data, error } = await supabase.rpc('verify_unit_password', { p_unit_id: pendingUnit.id, p_password: unitPasswordInput });
@@ -595,6 +547,24 @@ const App: React.FC = () => {
       setSelectedUnit(pendingUnit); setPendingUnit(null); setUnitPasswordInput('');
     } catch { setUnitLoginError('Erro ao verificar senha.'); }
     finally { setIsCheckingPassword(false); }
+  };
+
+  const handleCreateUnit = async () => {
+    if (!newUnitName.trim() || !newUnitId.trim() || !newUnitPassword.trim()) {
+      setNewUnitError('Preencha todos os campos.'); return;
+    }
+    setSavingUnit(true); setNewUnitError('');
+    try {
+      const { data, error } = await supabase
+        .from('units')
+        .insert([{ id: newUnitId.trim().toLowerCase().replace(/\s+/g, '_'), name: newUnitName.trim(), password: newUnitPassword.trim(), color: newUnitColor }])
+        .select().single();
+      if (error) { setNewUnitError('Erro: ' + error.message); return; }
+      setUnits(prev => [...prev, data as any]);
+      setShowNewUnit(false);
+      setNewUnitName(''); setNewUnitId(''); setNewUnitPassword(''); setNewUnitColor('#22c55e');
+    } catch { setNewUnitError('Erro ao criar unidade.'); }
+    finally { setSavingUnit(false); }
   };
 
   if (selectedUnit) return <StoreSystem unitId={selectedUnit.id} unitName={selectedUnit.name} onLogoutUnit={() => setSelectedUnit(null)} />;
@@ -631,9 +601,22 @@ const App: React.FC = () => {
               </div>
             </button>
           ))}
+
+          {/* Botão + Nova Unidade */}
+          <button onClick={() => setShowNewUnit(true)}
+            className="p-6 rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/30 hover:bg-zinc-800/30 transition-all text-left group">
+            <div className="flex items-center gap-3">
+              <Plus size={20} className="text-zinc-500 group-hover:text-green-400 transition-colors" />
+              <div>
+                <p className="font-bold text-zinc-400 group-hover:text-white transition-colors">Nova Unidade</p>
+                <p className="text-xs text-zinc-600">Adicionar regional</p>
+              </div>
+            </div>
+          </button>
         </div>
       )}
 
+      {/* Modal login unidade */}
       {pendingUnit && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 w-full max-w-sm">
@@ -645,6 +628,33 @@ const App: React.FC = () => {
             {unitLoginError && <p className="text-red-400 text-xs mb-4">{unitLoginError}</p>}
             <button onClick={handleUnitLogin} disabled={isCheckingPassword} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
               {isCheckingPassword ? <Loader2 size={16} className="animate-spin" /> : null} Entrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal nova unidade */}
+      {showNewUnit && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold">Nova Unidade</h2>
+              <button onClick={() => { setShowNewUnit(false); setNewUnitError(''); }} className="text-zinc-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <input value={newUnitName} onChange={e => setNewUnitName(e.target.value)} placeholder="Nome (ex: Barra da Tijuca)" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white focus:border-green-500 outline-none transition-all" />
+              <input value={newUnitId} onChange={e => setNewUnitId(e.target.value.toLowerCase().replace(/\s+/g, '_'))} placeholder="ID único (ex: barra)" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white focus:border-green-500 outline-none transition-all" />
+              <input type="password" value={newUnitPassword} onChange={e => setNewUnitPassword(e.target.value)} placeholder="Senha da unidade" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white focus:border-green-500 outline-none transition-all" />
+              <div className="flex items-center gap-3">
+                <label className="text-zinc-400 text-sm">Cor:</label>
+                <input type="color" value={newUnitColor} onChange={e => setNewUnitColor(e.target.value)} className="w-10 h-10 rounded-lg border border-zinc-700 bg-black cursor-pointer" />
+                <span className="text-zinc-500 text-xs">{newUnitColor}</span>
+              </div>
+            </div>
+            {newUnitError && <p className="text-red-400 text-xs mt-3">{newUnitError}</p>}
+            <button onClick={handleCreateUnit} disabled={savingUnit} className="w-full mt-6 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+              {savingUnit ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+              {savingUnit ? 'Criando...' : 'Criar Unidade'}
             </button>
           </div>
         </div>
